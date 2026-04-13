@@ -16,6 +16,9 @@ class Garde {
   final bool avecPanier;
   final DateTime? debutQuatorzaine;
   final String qualification;
+  final bool isCongesPaies;
+  final DateTime? cpDateFin;
+  final int nbJoursCP;
 
   Garde({
     required this.id,
@@ -32,6 +35,9 @@ class Garde {
     this.avecPanier = true,
     this.debutQuatorzaine,
     this.qualification = 'dea',
+    this.isCongesPaies = false,
+    this.cpDateFin,
+    this.nbJoursCP = 1,
   });
 
   int get dureeMinutesBrut => jourNonTravaille ? 0 : heureFin.difference(heureDebut).inMinutes;
@@ -77,25 +83,30 @@ class Garde {
         .contains('${date.year}-${date.month}-${date.day}');
   }
 
+  bool get isJourFerieSeulement {
+    return joursFeries(date.year)
+        .contains('${date.year}-${date.month}-${date.day}');
+  }
+
   String? get nomJourFerie {
     if (jourNonTravaille) return null;
     if (date.weekday == DateTime.sunday) return 'Dimanche';
     final p = _paques(date.year);
     final m = date.month; final j = date.day;
-    if (m == 1 && j == 1) return 'Jour de l\'An';
-    if (m == 5 && j == 1) return 'Fête du Travail';
+    if (m == 1 && j == 1) return "Jour de l'An";
+    if (m == 5 && j == 1) return 'Fete du Travail';
     if (m == 5 && j == 8) return 'Victoire 1945';
-    if (m == 7 && j == 14) return 'Fête Nationale';
+    if (m == 7 && j == 14) return 'Fete Nationale';
     if (m == 8 && j == 15) return 'Assomption';
     if (m == 11 && j == 1) return 'Toussaint';
     if (m == 11 && j == 11) return 'Armistice';
-    if (m == 12 && j == 25) return 'Noël';
+    if (m == 12 && j == 25) return 'Noel';
     final lp = p.add(const Duration(days: 1));
-    if (date.year == lp.year && m == lp.month && j == lp.day) return 'Lundi de Pâques';
+    if (date.year == lp.year && m == lp.month && j == lp.day) return 'Lundi de Paques';
     final asc = p.add(const Duration(days: 39));
     if (date.year == asc.year && m == asc.month && j == asc.day) return 'Ascension';
     final pent = p.add(const Duration(days: 50));
-    if (date.year == pent.year && m == pent.month && j == pent.day) return 'Lundi de Pentecôte';
+    if (date.year == pent.year && m == pent.month && j == pent.day) return 'Lundi de Pentecote';
     return null;
   }
 
@@ -125,6 +136,9 @@ class Garde {
     'avecPanier': avecPanier,
     'debutQuatorzaine': debutQuatorzaine?.toIso8601String(),
     'qualification': qualification,
+    'isCongesPaies': isCongesPaies,
+    'cpDateFin': cpDateFin?.toIso8601String(),
+    'nbJoursCP': nbJoursCP,
   };
 
   factory Garde.fromMap(Map<String, dynamic> map) {
@@ -146,6 +160,9 @@ class Garde {
           ? DateTime.parse(map['debutQuatorzaine'])
           : null,
       qualification: map['qualification'] ?? 'dea',
+      isCongesPaies: map['isCongesPaies'] ?? false,
+      cpDateFin: map['cpDateFin'] != null ? DateTime.parse(map['cpDateFin']) : null,
+      nbJoursCP: map['nbJoursCP'] ?? 1,
     );
   }
 }

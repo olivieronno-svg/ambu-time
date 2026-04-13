@@ -44,12 +44,18 @@ class Calculs {
     double taux = tauxHoraireDefaut,
     double panier = panierRepasDefaut,
     double indDimanche = indemnitesDimancheDefaut,
-    double montantIdaj = idajMontantDefaut, // gardé pour compatibilité
+    double montantIdaj = idajMontantDefaut,
   }) {
+    // CCN Transports Sanitaires — accord cadre :
+    // Jour férié non travaillé = maintien de salaire sur base 7h
+    if (g.jourNonTravaille) {
+      if (g.isJourFerieSeulement) return 7 * taux;
+      return 0;
+    }
     double base = g.dureeHeures * taux;
     double majNuit = majorationNuit(g, taux);
     double majDim = majorationDimanche(g, taux);
-    double indaj = idaj(g, taux); // calcul basé sur le taux horaire
+    double indaj = idaj(g, taux);
     double panierGarde = g.panierRepasGarde;
     double indDim = g.isDimancheOuFerie ? indDimanche : 0;
     return base + majNuit + majDim + indaj + panierGarde + indDim;
@@ -62,20 +68,19 @@ class Calculs {
     double indDimanche = indemnitesDimancheDefaut,
     double montantIdaj = idajMontantDefaut,
   }) {
-    return gardes.fold(
-        0.0,
-        (sum, g) => sum +
-            salaireBrutGarde(g,
-                taux: taux,
-                panier: panier,
-                indDimanche: indDimanche,
-                montantIdaj: montantIdaj));
+    return gardes
+        // Inclut les jours fériés non travaillés (payés 7h par CCN)
+        .where((g) => !g.isCongesPaies && (!g.jourNonTravaille || g.isJourFerieSeulement))
+        .fold(0.0, (sum, g) => sum +
+            salaireBrutGarde(g, taux: taux, panier: panier,
+                indDimanche: indDimanche, montantIdaj: montantIdaj));
   }
 
   static double netEstime(double brut) => brut * 0.78;
 
   static double totalHeures(List<Garde> gardes) =>
-      gardes.fold(0.0, (sum, g) => sum + g.dureeHeures);
+      gardes.where((g) => !g.jourNonTravaille)
+          .fold(0.0, (sum, g) => sum + g.dureeHeures);
 
   static double heuresSupp(List<Garde> gardes) {
     double total = totalHeures(gardes);
@@ -88,6 +93,67 @@ class Calculs {
     double supp = total - 78;
     if (supp <= 8) return supp * taux * 0.25;
     return 8 * taux * 0.25 + (supp - 8) * taux * 0.50;
+  }
+
+  // ── CCN : Heures supp par quatorzaine, rattachées au mois de fin ──────────
+  // Si la quatorzaine se termine dans le même mois → HS comptées ce mois
+  // Si elle chevauche 2 mois → HS rattachées au mois où la quatorzaine SE TERMINE
+  static Map<String, double> heuresSuppParMois(
+      List<Garde> gardes, DateTime? debutPremQuatorzaine) {
+    final Map<String, double> result = {};
+    if (gardes.isEmpty) return result;
+
+    // Reconstitue toutes les quatorzaines à partir du début configuré
+    // Si pas de début configuré, on groupe par mois simplement
+    if (debutPremQuatorzaine == null) {
+      // Fallback : calcul par mois
+      final Map<String, List<Garde>> parMois = {};
+      for (final g in gardes.where((g) => !g.jourNonTravaille && !g.isCongesPaies)) {
+        final k = '${g.date.year}-${g.date.month.toString().padLeft(2,'0')}';
+        parMois.putIfAbsent(k, () => []).add(g);
+      }
+      for (final e in parMois.entries) {
+        result[e.key] = heuresSupp(e.value);
+      }
+      return result;
+    }
+
+    // Génère les quatorzaines couvrant toutes les gardes
+    final gardesToutes = gardes
+        .where((g) => !g.jourNonTravaille && !g.isCongesPaies)
+        .toList()..sort((a, b) => a.date.compareTo(b.date));
+    if (gardesToutes.isEmpty) return result;
+
+    DateTime debut = debutPremQuatorzaine;
+    // Remonte au début si nécessaire
+    while (debut.isAfter(gardesToutes.first.date)) {
+      debut = debut.subtract(const Duration(days: 14));
+    }
+
+    // Parcourt toutes les quatorzaines jusqu'à couvrir toutes les gardes
+    while (!debut.isAfter(gardesToutes.last.date)) {
+      final fin = debut.add(const Duration(days: 13));
+      final gardesQ = gardesToutes
+          .where((g) => !g.date.isBefore(debut) && !g.date.isAfter(fin))
+          .toList();
+
+      if (gardesQ.isNotEmpty) {
+        final hs = heuresSupp(gardesQ);
+        if (hs > 0) {
+          // HS rattachées au mois de FIN de la quatorzaine (CCN)
+          final moisFin = '${fin.year}-${fin.month.toString().padLeft(2,'0')}';
+          result[moisFin] = (result[moisFin] ?? 0) + hs;
+        }
+      }
+      debut = debut.add(const Duration(days: 14));
+    }
+    return result;
+  }
+
+  static double majorationHSSurMontant(double hs, double taux) {
+    if (hs <= 0) return 0;
+    if (hs <= 8) return hs * taux * 0.25;
+    return 8 * taux * 0.25 + (hs - 8) * taux * 0.50;
   }
 
   static String formatHeures(double heures) {

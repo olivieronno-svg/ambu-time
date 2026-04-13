@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../app_theme.dart';
 import '../models/garde.dart';
 import '../models/prime.dart';
@@ -21,9 +22,11 @@ class ParametresScreen extends StatefulWidget {
   final double impotSource;
   final double primeAnnuelleCalculee;
   final double kmDomicileTravail;
+  final double congesAcquisAvant;
+  final int modeCp;
   final String poste;
   final Function(double, double, double, double, DateTime?,
-      List<PrimeMensuelle>, double, double, String) onParametresModifies;
+      List<PrimeMensuelle>, double, double, String, double, int) onParametresModifies;
 
   const ParametresScreen({
     super.key,
@@ -38,6 +41,8 @@ class ParametresScreen extends StatefulWidget {
     required this.impotSource,
     required this.primeAnnuelleCalculee,
     required this.kmDomicileTravail,
+    this.congesAcquisAvant = 0,
+    this.modeCp = 0,
     required this.poste,
     this.debutQuatorzaine,
   });
@@ -53,6 +58,8 @@ class _ParametresScreenState extends State<ParametresScreen> {
   late TextEditingController _idajCtrl;
   late TextEditingController _impotCtrl;
   late TextEditingController _kmCtrl;
+  late TextEditingController _congesCtrl;
+  late int _modeCp;
   late List<PrimeMensuelle> _primes;
   late String _poste;
   DateTime? _debutQuatorzaine;
@@ -67,8 +74,11 @@ class _ParametresScreenState extends State<ParametresScreen> {
     _dimancheCtrl = TextEditingController(text: widget.indemnitesDimanche.toStringAsFixed(2));
     _idajCtrl    = TextEditingController(text: widget.montantIdaj.toStringAsFixed(2));
     _impotCtrl   = TextEditingController(text: widget.impotSource.toStringAsFixed(1));
-    _kmCtrl      = TextEditingController(text: widget.kmDomicileTravail > 0
+    _kmCtrl = TextEditingController(text: widget.kmDomicileTravail > 0
         ? widget.kmDomicileTravail.toStringAsFixed(0) : '');
+    _congesCtrl = TextEditingController(text: widget.congesAcquisAvant > 0
+        ? widget.congesAcquisAvant.toStringAsFixed(1) : '');
+    _modeCp = widget.modeCp;
     _primes = List.from(widget.primes);
     _poste = widget.poste;
     _debutQuatorzaine = widget.debutQuatorzaine;
@@ -78,7 +88,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
   @override
   void dispose() {
     _tauxCtrl.dispose(); _panierCtrl.dispose(); _dimancheCtrl.dispose();
-    _idajCtrl.dispose(); _impotCtrl.dispose(); _kmCtrl.dispose();
+    _idajCtrl.dispose(); _impotCtrl.dispose(); _kmCtrl.dispose(); _congesCtrl.dispose();
     super.dispose();
   }
 
@@ -117,9 +127,80 @@ class _ParametresScreenState extends State<ParametresScreen> {
       _parse(_impotCtrl, 0),
       _parse(_kmCtrl, 0),
       _poste,
+      _parse(_congesCtrl, 0),
+      _modeCp,
     );
     ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Paramètres sauvegardés !')));
+  }
+
+  Future<void> _importerDonnees() async {
+    // Demande confirmation
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Importer une sauvegarde'),
+        content: const Text(
+            'Collez le contenu de votre fichier JSON de sauvegarde.\n\n'
+            'Attention : cela remplacera toutes vos données actuelles.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continuer')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    // Zone de texte pour coller le JSON
+    final ctrl = TextEditingController();
+    final json = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Coller le JSON'),
+        content: SizedBox(
+          height: 200,
+          child: TextField(
+            controller: ctrl,
+            maxLines: 10,
+            decoration: const InputDecoration(
+              hintText: 'Collez ici le contenu du fichier .json...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('Importer'),
+          ),
+        ],
+      ),
+    );
+
+    if (json == null || json.trim().isEmpty) return;
+
+    final resultat = await Storage.importerDonnees(json);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(resultat),
+        backgroundColor: resultat.startsWith('✓') ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 4),
+      ));
+      if (resultat.startsWith('✓')) {
+        // Informe l'utilisateur de relancer l'appli
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Importation réussie !'),
+              content: const Text('Fermez et relancez l\'application pour voir vos données restaurées.'),
+              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+            ),
+          );
+        });
+      }
+    }
   }
 
   Future<void> _exporterPdf() async {
@@ -200,29 +281,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
     );
   }
 
-  List<Map<String, dynamic>> _evolutionMensuelle() {
-    if (widget.gardes.isEmpty) return [];
-    final Map<String, double> brutParMois = {};
-    for (final g in widget.gardes) {
-      final key = '${g.date.year}-${g.date.month.toString().padLeft(2, '0')}';
-      brutParMois[key] = (brutParMois[key] ?? 0) +
-          Calculs.salaireBrutGarde(g, taux: widget.tauxHoraire, panier: widget.panierRepas,
-              indDimanche: widget.indemnitesDimanche, montantIdaj: widget.montantIdaj);
-    }
-    final keys = brutParMois.keys.toList()..sort();
-    double cumul = 0;
-    List<Map<String, dynamic>> result = [];
-    for (int i = 0; i < keys.length; i++) {
-      cumul += brutParMois[keys[i]]!;
-      final parts = keys[i].split('-');
-      result.add({
-        'key': keys[i], 'annee': int.parse(parts[0]), 'mois': int.parse(parts[1]),
-        'brut': brutParMois[keys[i]]!, 'moyenne': cumul / (i + 1),
-      });
-    }
-    return result;
-  }
-
   static const _moisNoms = ['', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
       'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
 
@@ -230,7 +288,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
   Widget build(BuildContext context) {
     final appState = AmbulancierApp.of(context);
     final totalPrimes = _primes.fold(0.0, (s, p) => s + p.montant);
-    final evolution = _evolutionMensuelle();
 
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
@@ -379,6 +436,18 @@ class _ParametresScreenState extends State<ParametresScreen> {
                 const SizedBox(height: 8),
                 _paramField('Km domicile-travail', 'Reporté automatiquement dans chaque garde',
                     _kmCtrl, 'km'),
+                _paramField('Congés acquis avant l\'appli',
+                    'Jours CP acquis avant de télécharger l\'appli',
+                    _congesCtrl, 'j'),
+                const SizedBox(height: 12),
+                // ── Mode calcul CP ─────────────────────────────────
+                Text('Mode de calcul des congés payés',
+                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                const SizedBox(height: 4),
+                Text('CCN Transports Sanitaires — 2 méthodes',
+                    style: TextStyle(fontSize: 10, color: AppTheme.textTertiary)),
+                const SizedBox(height: 8),
+                _modeCpSelector(),
               ]),
             ),
 
@@ -463,55 +532,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
             ),
 
             // ── Prime annuelle calculée ────────────────────────────
-            _sectionTitle('Prime annuelle (calculée auto.)'),
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(14),
-              decoration: AppTheme.cardDecoration(borderColor: AppTheme.colorGreen.withOpacity(0.3)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Icon(Icons.auto_graph, size: 16, color: AppTheme.colorGreen),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text('Moyenne des salaires mensuels — versée en mai',
-                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary))),
-                ]),
-                const SizedBox(height: 12),
-                Center(child: Text(
-                  widget.gardes.isEmpty ? 'Aucune garde'
-                      : '${widget.primeAnnuelleCalculee.toStringAsFixed(2)} €',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700,
-                      color: widget.gardes.isEmpty ? AppTheme.textTertiary : AppTheme.colorGreen))),
-                if (evolution.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  for (final e in evolution.reversed.take(4).toList().reversed)
-                    Padding(padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Row(children: [
-                        SizedBox(width: 40, child: Text(
-                            '${_moisNoms[e['mois']]} ${(e['annee'] as int) % 100}',
-                            style: TextStyle(fontSize: 10, color: AppTheme.textSecondary))),
-                        Expanded(child: ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: LinearProgressIndicator(
-                              value: evolution.isEmpty ? 0
-                                  : (e['brut'] as double) / (evolution
-                                      .map((x) => x['brut'] as double)
-                                      .reduce((a, b) => a > b ? a : b)),
-                              minHeight: 6,
-                              backgroundColor: AppTheme.bgCard,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  AppTheme.blueAccent.withOpacity(0.6)),
-                            ))),
-                        const SizedBox(width: 8),
-                        SizedBox(width: 65, child: Text(
-                            '${(e['brut'] as double).toStringAsFixed(0)} €',
-                            textAlign: TextAlign.right,
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-                                color: AppTheme.blueAccent))),
-                      ])),
-                ],
-              ]),
-            ),
-
             // ── Majorations CCN ────────────────────────────────────
             _sectionTitle('Majorations CCN (auto)'),
             Container(
@@ -567,6 +587,54 @@ class _ParametresScreenState extends State<ParametresScreen> {
               ]),
             ),
 
+            // ── Sauvegarde / Restauration ──────────────────────────
+            _sectionTitle('Sauvegarde des données'),
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: AppTheme.cardDecoration(
+                  borderColor: AppTheme.blueAccent.withOpacity(0.3)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(Icons.backup_outlined, size: 16, color: AppTheme.blueAccent),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(
+                    'Exportez vos données avant chaque mise à jour',
+                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                  )),
+                ]),
+                const SizedBox(height: 12),
+                SizedBox(width: double.infinity, child: ElevatedButton.icon(
+                  onPressed: () async {
+                    try {
+                      await Storage.exporterDonnees(widget.gardes);
+                    } catch (e) {
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red));
+                    }
+                  },
+                  icon: const Icon(Icons.upload_outlined, size: 16),
+                  label: const Text('Exporter mes données (.json)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.blueAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                )),
+                const SizedBox(height: 8),
+                SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                  onPressed: _importerDonnees,
+                  icon: const Icon(Icons.download_outlined, size: 16),
+                  label: const Text('Importer une sauvegarde (.json)'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.blueAccent,
+                    side: BorderSide(color: AppTheme.blueAccent.withOpacity(0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                )),
+              ]),
+            ),
+
             SizedBox(width: double.infinity, child: ElevatedButton(
               onPressed: _sauvegarder,
               child: const Text('Sauvegarder',
@@ -607,6 +675,55 @@ class _ParametresScreenState extends State<ParametresScreen> {
     child: Text(title.toUpperCase(), style: TextStyle(fontSize: 10,
         fontWeight: FontWeight.w500, color: AppTheme.textTertiary, letterSpacing: 0.8)),
   );
+
+  Widget _modeCpSelector() {
+    final modes = [
+      {'id': 0, 'label': 'Auto (plus favorable)', 'desc': 'Compare les 2 méthodes et applique la meilleure'},
+      {'id': 1, 'label': 'Règle du 1/10', 'desc': '1/10 du brut annuel de la période de référence'},
+      {'id': 2, 'label': 'Maintien du salaire', 'desc': 'Salaire moyen journalier × nb jours CP'},
+    ];
+    return Column(children: modes.map((m) {
+      final isSelected = _modeCp == m['id'];
+      return GestureDetector(
+        onTap: () => setState(() => _modeCp = m['id'] as int),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppTheme.blueAccent.withOpacity(0.12)
+                : AppTheme.bgCard,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: isSelected
+                ? AppTheme.blueAccent
+                : AppTheme.bgCardBorder),
+          ),
+          child: Row(children: [
+            Container(
+              width: 18, height: 18,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isSelected ? AppTheme.blueAccent : Colors.transparent,
+                border: Border.all(color: isSelected
+                    ? AppTheme.blueAccent : AppTheme.textTertiary, width: 2),
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check, size: 11, color: Colors.white)
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(m['label'] as String, style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600,
+                  color: isSelected ? AppTheme.blueAccent : AppTheme.textPrimary)),
+              Text(m['desc'] as String, style: TextStyle(
+                  fontSize: 10, color: AppTheme.textSecondary)),
+            ])),
+          ]),
+        ),
+      );
+    }).toList());
+  }
 
   Widget _paramField(String label, String hint, TextEditingController ctrl, String suffix) {
     return Padding(padding: const EdgeInsets.only(bottom: 12),

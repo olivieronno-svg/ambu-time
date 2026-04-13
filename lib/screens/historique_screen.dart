@@ -288,10 +288,15 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
               children: moisDansAnnee.map((cle) {
                 final moisNum = int.parse(cle.split('-')[1]);
                 final gm = parMois[cle]!;
-                final brutMois = Calculs.totalBrut(gm, taux: widget.tauxHoraire,
+                final brutMois = Calculs.totalBrut(
+                    gm.where((g) => !g.isCongesPaies).toList(),
+                    taux: widget.tauxHoraire,
                     panier: widget.panierRepas, indDimanche: widget.indemnitesDimanche,
                     montantIdaj: widget.montantIdaj);
-                final hMois = Calculs.totalHeures(gm);
+                final hMois = Calculs.totalHeures(gm.where((g) => !g.isCongesPaies).toList());
+                final nbCp = gm.where((g) => g.isCongesPaies).fold(0, (s, g) => s + g.nbJoursCP);
+                final cpEstim = nbCp * 7 * widget.tauxHoraire;
+                final brutTotal = brutMois + cpEstim;
                 return GestureDetector(
                   onTap: () => setState(() => _mois = cle),
                   child: Container(
@@ -308,7 +313,11 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                       const SizedBox(height: 2),
                       Text('${Calculs.formatHeures(hMois)}',
                           style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-                      Text('${brutMois.toStringAsFixed(0)} €',
+                      if (nbCp > 0)
+                        Text('🏖️ $nbCp j. CP',
+                            style: const TextStyle(fontSize: 10,
+                                color: Color(0xFF1D9E75), fontWeight: FontWeight.w500)),
+                      Text('${brutTotal.toStringAsFixed(0)} €',
                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
                               color: AppTheme.green)),
                     ]),
@@ -379,16 +388,19 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
       itemCount: gardes.length,
       itemBuilder: (ctx, i) {
         final g = gardes[i];
-        final brut = g.jourNonTravaille ? 0.0 : Calculs.salaireBrutGarde(g,
-            taux: widget.tauxHoraire, panier: widget.panierRepas,
-            indDimanche: widget.indemnitesDimanche, montantIdaj: widget.montantIdaj);
+        final brut = g.isCongesPaies
+            ? 0.0
+            : Calculs.salaireBrutGarde(g,
+                taux: widget.tauxHoraire, panier: widget.panierRepas,
+                indDimanche: widget.indemnitesDimanche, montantIdaj: widget.montantIdaj);
         return GestureDetector(
           onTap: () => _ouvrirModification(g),
           child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
           decoration: AppTheme.cardDecoration(
-            borderColor: g.jourNonTravaille ? Colors.orange.withOpacity(0.3)
+            borderColor: g.isCongesPaies ? const Color(0xFF1D9E75).withOpacity(0.5)
+                : g.jourNonTravaille ? Colors.orange.withOpacity(0.3)
                 : g.isDimancheOuFerie ? AppTheme.amber.withOpacity(0.3) : null,
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -397,7 +409,13 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                 Text(_dateCourte(g.date), style: const TextStyle(fontSize: 13,
                     fontWeight: FontWeight.w500, color: Colors.white)),
                 const SizedBox(width: 8),
-                if (g.jourNonTravaille)
+                if (g.isCongesPaies)
+                  _badge('🏖️ CP · ${g.nbJoursCP}j',
+                      const Color(0xFF1D9E75).withOpacity(0.15),
+                      const Color(0xFF1D9E75))
+                else if (g.jourNonTravaille && g.isJourFerieSeulement)
+                  _badge('🎉 Férié — 7h payées', Colors.purple.withOpacity(0.15), Colors.purple)
+                else if (g.jourNonTravaille)
                   _badge('Non travaillé', Colors.orange.withOpacity(0.15), Colors.orange)
                 else if (g.isDimancheOuFerie)
                   _badge(g.nomJourFerie ?? 'Dim.', AppTheme.amber.withOpacity(0.15), AppTheme.amber)
@@ -407,14 +425,25 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   _badge(_dateCourte(g.date), AppTheme.green.withOpacity(0.15), AppTheme.green),
               ]),
               Row(children: [
-                if (!g.jourNonTravaille)
-                  Text('${brut.toStringAsFixed(0)} €', style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.green)),
+                if (!g.isCongesPaies)
+                  Text('${brut.toStringAsFixed(0)} €', style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w500,
+                      color: g.jourNonTravaille && g.isJourFerieSeulement
+                          ? Colors.purple
+                          : AppTheme.green)),
                 const SizedBox(width: 8),
                 Icon(Icons.edit_outlined, size: 14, color: AppTheme.blueAccent),
               ]),
             ]),
-            if (!g.jourNonTravaille) ...[
+            if (g.isCongesPaies) ...[
+              const SizedBox(height: 4),
+              Text(
+                g.cpDateFin != null
+                    ? 'Période : ${g.date.day}/${g.date.month} → ${g.cpDateFin!.day}/${g.cpDateFin!.month}/${g.cpDateFin!.year}'
+                    : 'Journée CP — ${g.date.day}/${g.date.month}/${g.date.year}',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF1D9E75)),
+              ),
+            ] else if (!g.jourNonTravaille) ...[
               const SizedBox(height: 4),
               Text('${g.heureDebut.hour}h${g.heureDebut.minute.toString().padLeft(2, '0')} → ${g.heureFin.hour}h${g.heureFin.minute.toString().padLeft(2, '0')} · ${Calculs.formatHeures(g.dureeHeures)}',
                   style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),

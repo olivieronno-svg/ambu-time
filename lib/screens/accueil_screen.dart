@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/garde.dart';
+import '../models/planned_garde.dart';
 import '../utils/calculs.dart';
 import '../app_theme.dart';
 
@@ -42,17 +43,209 @@ class AccueilScreen extends StatefulWidget {
 
 class _AccueilScreenState extends State<AccueilScreen> {
   List<_Note> _notes = [];
+  List<PlannedGarde> _planning = [];
   static const _keyNotes = 'app_notes_v1';
+  static const _keyPlanning = 'app_planning_v1';
   String _lettreActive = 'A';
   final ScrollController _notesScroll = ScrollController();
 
   static const _alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
   @override
-  void initState() { super.initState(); _chargerNotes(); }
+  void initState() { super.initState(); _chargerNotes(); _chargerPlanning(); }
 
   @override
   void dispose() { _notesScroll.dispose(); super.dispose(); }
+
+  Future<void> _chargerPlanning() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_keyPlanning) ?? [];
+    final now = DateTime.now();
+    setState(() {
+      _planning = raw
+          .map((s) => PlannedGarde.fromMap(jsonDecode(s)))
+          .where((g) => !g.date.isBefore(DateTime(now.year, now.month, now.day)))
+          .toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+    });
+  }
+
+  Future<void> _sauvegarderPlanning() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_keyPlanning,
+        _planning.map((g) => jsonEncode(g.toMap())).toList());
+  }
+
+  void _ouvrirAjoutPlanning({PlannedGarde? garde}) {
+    DateTime dateSelectionnee = garde?.date ?? DateTime.now().add(const Duration(days: 1));
+    int dhH = garde?.heureDebutH ?? 7, dhM = garde?.heureDebutM ?? 0;
+    int dfH = garde?.heureFinH ?? 17, dfM = garde?.heureFinM ?? 0;
+    final notesCtrl = TextEditingController(text: garde?.notes ?? '');
+    final collegueCtrl = TextEditingController(text: garde?.collegue ?? '');
+
+    showModalBottomSheet(
+      context: context, isScrollControlled: true,
+      backgroundColor: const Color(0xFFB5D4F4).withOpacity(0.95),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(left: 20, right: 20, top: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                const Text('Planifier une garde', style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF042C53))),
+                if (garde != null)
+                  GestureDetector(
+                    onTap: () { Navigator.pop(ctx);
+                      setState(() => _planning.removeWhere((g) => g.id == garde.id));
+                      _sauvegarderPlanning(); },
+                    child: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
+                  ),
+              ]),
+              const SizedBox(height: 14),
+
+              // Date
+              GestureDetector(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: dateSelectionnee,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                    locale: const Locale('fr', 'FR'),
+                  );
+                  if (picked != null) setModalState(() => dateSelectionnee = picked);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF185FA5).withOpacity(0.3)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.calendar_today, size: 16, color: Color(0xFF185FA5)),
+                    const SizedBox(width: 10),
+                    Text(
+                      '${dateSelectionnee.day}/${dateSelectionnee.month}/${dateSelectionnee.year}',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
+                          color: Color(0xFF042C53)),
+                    ),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Horaires
+              Row(children: [
+                Expanded(child: _champHeureModal('Début',
+                    dhH, dhM, (h, m) => setModalState(() { dhH = h; dhM = m; }))),
+                const SizedBox(width: 10),
+                Expanded(child: _champHeureModal('Fin',
+                    dfH, dfM, (h, m) => setModalState(() { dfH = h; dfM = m; }))),
+              ]),
+              const SizedBox(height: 12),
+
+              TextField(controller: collegueCtrl,
+                style: const TextStyle(color: Color(0xFF042C53)),
+                decoration: InputDecoration(
+                  labelText: 'Collègue prévu',
+                  labelStyle: const TextStyle(color: Color(0xFF185FA5)),
+                  prefixIcon: const Icon(Icons.person_outline, size: 18, color: Color(0xFF185FA5)),
+                  fillColor: Colors.white.withOpacity(0.7),
+                )),
+              const SizedBox(height: 8),
+              TextField(controller: notesCtrl,
+                style: const TextStyle(color: Color(0xFF042C53)),
+                decoration: InputDecoration(
+                  labelText: 'Notes',
+                  labelStyle: const TextStyle(color: Color(0xFF185FA5)),
+                  prefixIcon: const Icon(Icons.notes, size: 18, color: Color(0xFF185FA5)),
+                  fillColor: Colors.white.withOpacity(0.7),
+                )),
+              const SizedBox(height: 16),
+
+              SizedBox(width: double.infinity, child: ElevatedButton(
+                onPressed: () {
+                  final pg = PlannedGarde(
+                    id: garde?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                    date: dateSelectionnee,
+                    heureDebutH: dhH, heureDebutM: dhM,
+                    heureFinH: dfH, heureFinM: dfM,
+                    notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+                    collegue: collegueCtrl.text.trim().isEmpty ? null : collegueCtrl.text.trim(),
+                  );
+                  setState(() {
+                    if (garde == null) {
+                      _planning.add(pg);
+                    } else {
+                      final i = _planning.indexWhere((g) => g.id == garde.id);
+                      if (i != -1) _planning[i] = pg;
+                    }
+                    _planning.sort((a, b) => a.date.compareTo(b.date));
+                  });
+                  _sauvegarderPlanning();
+                  Navigator.pop(ctx);
+                },
+                child: Text(garde == null ? 'Ajouter au planning' : 'Mettre à jour',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              )),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _champHeureModal(String label, int h, int m, Function(int, int) onChanged) {
+    final hCtrl = TextEditingController(text: h.toString().padLeft(2, '0'));
+    final mCtrl = TextEditingController(text: m.toString().padLeft(2, '0'));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF185FA5).withOpacity(0.3)),
+      ),
+      child: Column(children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF185FA5))),
+        const SizedBox(height: 4),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          SizedBox(width: 36, child: TextField(
+            controller: hCtrl, textAlign: TextAlign.center,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+                color: Color(0xFF042C53)),
+            decoration: const InputDecoration(
+                hintText: 'HH', contentPadding: EdgeInsets.zero, isDense: true,
+                border: InputBorder.none),
+            onChanged: (v) {
+              final hv = int.tryParse(v) ?? h;
+              onChanged(hv.clamp(0, 23), m);
+            },
+          )),
+          const Text(' : ', style: TextStyle(fontSize: 18, color: Color(0xFF042C53))),
+          SizedBox(width: 36, child: TextField(
+            controller: mCtrl, textAlign: TextAlign.center,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+                color: Color(0xFF042C53)),
+            decoration: const InputDecoration(
+                hintText: 'MM', contentPadding: EdgeInsets.zero, isDense: true,
+                border: InputBorder.none),
+            onChanged: (v) {
+              final mv = int.tryParse(v) ?? m;
+              onChanged(h, mv.clamp(0, 59));
+            },
+          )),
+        ]),
+      ]),
+    );
+  }
 
   Future<void> _chargerNotes() async {
     final prefs = await SharedPreferences.getInstance();
@@ -258,6 +451,69 @@ class _AccueilScreenState extends State<AccueilScreen> {
               ),
               const SizedBox(height: 10),
 
+              // ── Alerte 78h ─────────────────────────────────────────
+              if (totalHeures >= 70 && totalHeures < 78) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.amber.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.amber.withOpacity(0.5)),
+                  ),
+                  child: Row(children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.amber.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.warning_amber_rounded, size: 20, color: AppTheme.colorAmber),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Attention — seuil 78h proche !',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                              color: AppTheme.colorAmber)),
+                      Text(
+                        'Il te reste ${Calculs.formatHeures(78 - totalHeures)} avant les heures supplémentaires.',
+                        style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                      ),
+                    ])),
+                  ]),
+                ),
+                const SizedBox(height: 10),
+              ] else if (totalHeures >= 78) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.red.withOpacity(0.5)),
+                  ),
+                  child: Row(children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.red.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.alarm_on_rounded, size: 20, color: AppTheme.colorRed),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Heures supplémentaires !',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                              color: AppTheme.colorRed)),
+                      Text(
+                        '${Calculs.formatHeures(heuresSupp)} en heures supp. (+25% puis +50%)',
+                        style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                      ),
+                    ])),
+                  ]),
+                ),
+                const SizedBox(height: 10),
+              ],
+
               // ── Métriques ──────────────────────────────────────────
               GridView.count(
                 crossAxisCount: 2, shrinkWrap: true,
@@ -277,148 +533,103 @@ class _AccueilScreenState extends State<AccueilScreen> {
               ),
               const SizedBox(height: 14),
 
-              // ── Notes calepin A-Z ──────────────────────────────────
+              // ── Planning des gardes à venir ────────────────────────
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                Text('NOTES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
+                Text('PLANNING', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
                     color: AppTheme.textTertiary, letterSpacing: 0.8)),
                 GestureDetector(
-                  onTap: () => _ouvrirEditeur(null),
+                  onTap: () => _ouvrirAjoutPlanning(),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
-                      color: AppTheme.blueAccent.withOpacity(0.15),
+                      color: AppTheme.blueAccent,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.blueAccent.withOpacity(0.3)),
                     ),
-                    child: const Row(children: [
-                      Icon(Icons.add, size: 14, color: AppTheme.blueAccent),
-                      SizedBox(width: 4),
-                      Text('Nouvelle', style: TextStyle(fontSize: 11, color: AppTheme.blueAccent)),
+                    child: Row(children: [
+                      const Icon(Icons.add, size: 14, color: Colors.white),
+                      const SizedBox(width: 4),
+                      const Text('Ajouter', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
                     ]),
                   ),
                 ),
               ]),
               const SizedBox(height: 8),
 
-              // ── Calepin avec onglets A-Z ───────────────────────────
-              Container(
-                height: 380,
-                decoration: AppTheme.cardDecoration(),
-                clipBehavior: Clip.hardEdge,
-                child: Row(
-                  children: [
-                    // Contenu des notes
-                    Expanded(
-                      child: Column(
-                        children: [
-                          // En-tête lettre active
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            color: AppTheme.blueAccent.withOpacity(0.1),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(_lettreActive, style: TextStyle(fontSize: 18,
-                                    fontWeight: FontWeight.w700, color: AppTheme.blueAccent,
-                                    letterSpacing: 1)),
-                                Text(
-                                  '${_notesPourLettre.length} note${_notesPourLettre.length != 1 ? 's' : ''}',
-                                  style: TextStyle(fontSize: 10, color: AppTheme.textSecondary),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Liste des notes
-                          Expanded(
-                            child: _notesPourLettre.isEmpty
-                                ? Center(child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.notes, size: 28, color: AppTheme.textTertiary),
-                                      const SizedBox(height: 6),
-                                      Text('Aucune note pour $_lettreActive',
-                                          style: TextStyle(fontSize: 12, color: AppTheme.textTertiary)),
-                                    ],
-                                  ))
-                                : ListView.separated(
-                                    padding: const EdgeInsets.symmetric(vertical: 4),
-                                    itemCount: _notesPourLettre.length,
-                                    separatorBuilder: (_, __) => Divider(height: 1,
-                                        color: AppTheme.bgCardBorder, indent: 14, endIndent: 14),
-                                    itemBuilder: (ctx, i) {
-                                      final note = _notesPourLettre[i];
-                                      return GestureDetector(
-                                        onTap: () => _ouvrirEditeur(note),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 14, vertical: 10),
-                                          child: Row(children: [
-                                            Expanded(child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(note.titre, style: TextStyle(fontSize: 13,
-                                                    fontWeight: FontWeight.w500,
-                                                    color: AppTheme.textPrimary)),
-                                                if (note.contenu.isNotEmpty) ...[
-                                                  const SizedBox(height: 2),
-                                                  Text(note.contenu, maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: TextStyle(fontSize: 11,
-                                                          color: AppTheme.textSecondary)),
-                                                ],
-                                              ],
-                                            )),
-                                            Icon(Icons.chevron_right, size: 16,
-                                                color: AppTheme.textTertiary),
-                                          ]),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Onglets A-Z à droite
-                    Container(
-                      width: 22,
+              if (_planning.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: AppTheme.cardDecoration(),
+                  child: Row(children: [
+                    Icon(Icons.event_outlined, size: 18, color: AppTheme.textTertiary),
+                    const SizedBox(width: 10),
+                    Text('Aucune garde planifiée',
+                        style: TextStyle(fontSize: 12, color: AppTheme.textTertiary)),
+                  ]),
+                )
+              else
+                Column(children: _planning.take(5).map((g) {
+                  final joursRestants = g.date.difference(DateTime.now()).inDays;
+                  final color = g.isToday
+                      ? const Color(0xFF1D9E75)
+                      : g.isTomorrow
+                          ? const Color(0xFFd97706)
+                          : const Color(0xFF185FA5);
+                  final bgColor = g.isToday
+                      ? const Color(0xFF9FE1CB).withOpacity(0.2)
+                      : g.isTomorrow
+                          ? const Color(0xFFFAC775).withOpacity(0.2)
+                          : const Color(0xFFB5D4F4).withOpacity(0.2);
+                  final label = g.isToday ? "Aujourd'hui"
+                      : g.isTomorrow ? 'Demain'
+                      : 'Dans $joursRestants j.';
+
+                  return GestureDetector(
+                    onTap: () => _ouvrirAjoutPlanning(garde: g),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        border: Border(left: BorderSide(color: AppTheme.bgCardBorder, width: 0.5)),
+                        color: bgColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: color.withOpacity(0.3)),
                       ),
-                      child: ListView.builder(
-                        itemCount: _alphabet.length,
-                        itemBuilder: (ctx, i) {
-                          final lettre = _alphabet[i];
-                          final hasNotes = _notes.any((n) =>
-                              n.titre.isNotEmpty && n.titre[0].toUpperCase() == lettre);
-                          final isActive = lettre == _lettreActive;
-                          return GestureDetector(
-                            onTap: () => setState(() => _lettreActive = lettre),
-                            child: Container(
-                              height: 14,
-                              color: isActive
-                                  ? AppTheme.blueAccent.withOpacity(0.2)
-                                  : Colors.transparent,
-                              child: Center(
-                                child: Text(lettre,
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                                    color: hasNotes
-                                        ? (isActive ? AppTheme.blueAccent : AppTheme.textPrimary)
-                                        : AppTheme.textTertiary,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                      child: Row(children: [
+                        Container(
+                          width: 48, height: 48,
+                          decoration: BoxDecoration(
+                            color: color.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Text('${g.date.day}', style: TextStyle(fontSize: 16,
+                                fontWeight: FontWeight.w800, color: color)),
+                            Text(_moisCourt(g.date.month), style: TextStyle(
+                                fontSize: 9, color: color)),
+                          ]),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(label, style: TextStyle(fontSize: 12,
+                              fontWeight: FontWeight.w600, color: color)),
+                          Text(g.heuresLabel, style: TextStyle(
+                              fontSize: 11, color: AppTheme.textSecondary)),
+                          if (g.collegue != null)
+                            Text('👤 ${g.collegue}', style: TextStyle(
+                                fontSize: 10, color: AppTheme.textSecondary)),
+                          if (g.notes != null)
+                            Text('📝 ${g.notes}', style: TextStyle(
+                                fontSize: 10, color: AppTheme.textSecondary)),
+                        ])),
+                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Text('${g.dureeHeures.toStringAsFixed(1)}h',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
+                                  color: color)),
+                          Icon(Icons.edit_outlined, size: 12, color: AppTheme.textTertiary),
+                        ]),
+                      ]),
                     ),
-                  ],
-                ),
-              ),
+                  );
+                }).toList()),
               const SizedBox(height: 20),
             ],
           ),
@@ -442,5 +653,11 @@ class _AccueilScreenState extends State<AccueilScreen> {
         ],
       ),
     );
+  }
+
+  String _moisCourt(int mois) {
+    const noms = ['', 'jan', 'fév', 'mar', 'avr', 'mai', 'jun',
+        'jul', 'aoû', 'sep', 'oct', 'nov', 'déc'];
+    return noms[mois];
   }
 }

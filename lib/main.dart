@@ -101,6 +101,8 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   double _impotSource = 0;
   double _kmDomicileTravail = 0;
   String _poste = 'dea';
+  double _congesAcquisAvant = 0;
+  int _modeCp = 0;
   DateTime? _debutQuatorzaine;
   bool _chargement = true;
   Garde? _gardeAModifier;
@@ -123,6 +125,8 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       _impotSource = params['impotSource'] as double;
       _kmDomicileTravail = params['kmDomicileTravail'] as double;
       _poste = params['poste'] as String;
+      _congesAcquisAvant = params['congesAcquisAvant'] as double? ?? 0.0;
+      _modeCp = params['modeCp'] as int? ?? 0;
       _chargement = false;
     });
   }
@@ -150,18 +154,21 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
 
   void _modifierParametres(double taux, double panier, double dimanche,
       double idaj, DateTime? debutQuatorzaine, List<PrimeMensuelle> primes,
-      double impotSource, double kmDomicileTravail, String poste) {
+      double impotSource, double kmDomicileTravail, String poste,
+      [double congesAcquisAvant = 0, int modeCp = 0]) {
     setState(() {
       _tauxHoraire = taux; _panierRepas = panier;
       _indemnitesDimanche = dimanche; _montantIdaj = idaj;
       _debutQuatorzaine = debutQuatorzaine; _primes = primes;
       _impotSource = impotSource; _kmDomicileTravail = kmDomicileTravail;
-      _poste = poste;
+      _poste = poste; _congesAcquisAvant = congesAcquisAvant;
+      _modeCp = modeCp;
     });
     Storage.sauvegarderParametres(
       taux: taux, panier: panier, dimanche: dimanche, idaj: idaj,
       debutQuatorzaine: debutQuatorzaine, primes: primes,
-      impotSource: impotSource, kmDomicileTravail: kmDomicileTravail, poste: poste,
+      impotSource: impotSource, kmDomicileTravail: kmDomicileTravail,
+      poste: poste, congesAcquisAvant: congesAcquisAvant, modeCp: modeCp,
     );
   }
 
@@ -216,11 +223,15 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         indemnitesDimanche: _indemnitesDimanche, montantIdaj: _montantIdaj,
         gardeAModifier: _gardeAModifier, debutQuatorzaine: _debutQuatorzaine,
         kmDomicileTravail: _kmDomicileTravail, poste: _poste,
+        onSupprimerGardeId: _supprimerGarde,
+        toutesGardes: _gardes,
       ),
       SalaireScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
         indemnitesDimanche: _indemnitesDimanche, montantIdaj: _montantIdaj,
-        primes: _primes, primeAnnuelle: _primeAnnuelleCalculee, impotSource: _impotSource,
+        primes: _primes, primeAnnuelle: _primeAnnuelleCalculee,
+        impotSource: _impotSource, congesAcquisAvant: _congesAcquisAvant,
+        modeCp: _modeCp, debutQuatorzaine: _debutQuatorzaine,
       ),
       GraphiquesScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
@@ -241,6 +252,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         primes: _primes, impotSource: _impotSource,
         primeAnnuelleCalculee: _primeAnnuelleCalculee,
         kmDomicileTravail: _kmDomicileTravail, poste: _poste,
+        congesAcquisAvant: _congesAcquisAvant, modeCp: _modeCp,
       ),
       ImpotsScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,

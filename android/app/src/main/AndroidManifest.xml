@@ -1,5 +1,7 @@
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Ambu Time"
         android:name="${applicationName}"
@@ -26,19 +28,15 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-
     <queries>
-        <!-- Ouverture de liens https (url_launcher) -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
-        <!-- Ouverture de liens http -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="http" />
         </intent>
-        <!-- Traitement de texte (Flutter engine) -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

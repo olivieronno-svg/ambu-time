@@ -120,12 +120,35 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
         ? kmDepuisGardes
         : (widget.kmDomicileTravail * nbJoursTravailles);
 
-    // ── Détail achats par catégorie/mois ──────────────────────────────────
-    final Map<String, double> achatsMois = {};
+    // ── Catégories de frais (Jan → Déc) ──────────────────────────────────
+    final motsCle_repas = ['cafe', 'chocolat', 'the', 'tisane', 'sandwich', 'croissant', 'pizza', 'jus', 'eau',
+        'boisson', 'pain', 'baguette', 'menu', 'repas', 'dejeuner', 'diner',
+        'restaurant', 'snack', 'burger', 'kebab', 'salade'];
+    final motsCle_carbu = ['essence', 'carburant', 'gasoil', 'diesel', 'plein', 'sp95', 'sp98'];
+
+    double totalRepas = 0, totalCarbu = 0, totalMateriel = 0;
+    // Par mois : {mois: {repas, carbu, materiel}}
+    final Map<int, Map<String, double>> fraisParMois = {};
+    for (int m = 1; m <= 12; m++) {
+      fraisParMois[m] = {'repas': 0, 'carbu': 0, 'materiel': 0};
+    }
+
     for (final g in gardesAnnee) {
-      if (g.achats.isEmpty) continue;
-      final key = '${g.date.month.toString().padLeft(2, '0')}';
-      achatsMois[key] = (achatsMois[key] ?? 0) + g.totalAchats;
+      for (final a in g.achats) {
+        final nom = a.intitule.toLowerCase()
+            .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a').replaceAll('ç','c');
+        final mois = g.date.month;
+        if (motsCle_repas.any((k) => nom.contains(k))) {
+          totalRepas += a.montant;
+          fraisParMois[mois]!['repas'] = (fraisParMois[mois]!['repas']! + a.montant);
+        } else if (motsCle_carbu.any((k) => nom.contains(k))) {
+          totalCarbu += a.montant;
+          fraisParMois[mois]!['carbu'] = (fraisParMois[mois]!['carbu']! + a.montant);
+        } else {
+          totalMateriel += a.montant;
+          fraisParMois[mois]!['materiel'] = (fraisParMois[mois]!['materiel']! + a.montant);
+        }
+      }
     }
 
     return Scaffold(
@@ -142,7 +165,71 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                   style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
               const SizedBox(height: 16),
 
-              // ── Prélèvement à la source ────────────────────────────
+              // ── Frais professionnels par catégorie ────────────────
+              _sectionTitle('Frais professionnels $annee'),
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: AppTheme.cardDecoration(),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // Totaux annuels
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                    child: Column(children: [
+                      _ligneCalc('Frais de repas (sans panier)',
+                          '${totalRepas.toStringAsFixed(2)} €',
+                          'Café, sandwich, eau... achetés en service', isBold: totalRepas > 0),
+                      _ligneCalc('Frais de carburant',
+                          '${totalCarbu.toStringAsFixed(2)} €',
+                          'Essence, gasoil, diesel', isBold: totalCarbu > 0),
+                      _ligneCalc('Achats de matériels',
+                          '${totalMateriel.toStringAsFixed(2)} €',
+                          'Équipements, fournitures', isBold: totalMateriel > 0),
+                      Divider(color: AppTheme.bgCardBorder),
+                      _ligneCalc('Total annuel (Jan–Déc $annee)',
+                          '${(totalRepas + totalCarbu + totalMateriel).toStringAsFixed(2)} €',
+                          null, isBold: true),
+                    ]),
+                  ),
+                  // Détail par mois
+                  if (gardesAnnee.any((g) => g.achats.isNotEmpty)) ...[
+                    Divider(height: 1, color: AppTheme.bgCardBorder),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+                      child: Text('DÉTAIL PAR MOIS',
+                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600,
+                              color: AppTheme.textTertiary, letterSpacing: 0.8)),
+                    ),
+                    ...List.generate(12, (i) {
+                      final m = i + 1;
+                      final r = fraisParMois[m]!['repas']!;
+                      final c = fraisParMois[m]!['carbu']!;
+                      final mt = fraisParMois[m]!['materiel']!;
+                      final total = r + c + mt;
+                      if (total == 0) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 2, 14, 2),
+                        child: Row(children: [
+                          SizedBox(width: 36,
+                              child: Text(_nomMoisCourt(m),
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                                      color: AppTheme.blueAccent))),
+                          Expanded(child: Wrap(spacing: 8, children: [
+                            if (r > 0) _fraisBadge('🍽 ${r.toStringAsFixed(2)}€', AppTheme.green),
+                            if (c > 0) _fraisBadge('⛽ ${c.toStringAsFixed(2)}€', Colors.orange),
+                            if (mt > 0) _fraisBadge('🔧 ${mt.toStringAsFixed(2)}€', AppTheme.blueAccent),
+                          ])),
+                          Text('${total.toStringAsFixed(2)} €',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary)),
+                        ]),
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                  ],
+                ]),
+              ),
+
+
               _sectionTitle('Impôt prélèvement à la source'),
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -198,77 +285,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                   ] else ...[
                     Padding(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                      child: Text(
-                        'Configurez votre taux de prélèvement dans Paramètres → Profil.',
-                        style: TextStyle(fontSize: 11, color: AppTheme.textTertiary),
-                      ),
-                    ),
-                  ],
-                ]),
-              ),
-
-              // ── Total achats frais réels ───────────────────────────
-              _sectionTitle('Total achats — frais réels'),
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: AppTheme.cardDecoration(
-                    borderColor: AppTheme.colorGreen.withOpacity(0.3)),
-                child: Column(children: [
-                  Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Achats cumulés $annee',
-                            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                        Text('Saisis quotidiennes',
-                            style: TextStyle(fontSize: 10, color: AppTheme.textTertiary)),
-                      ])),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.colorGreen.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppTheme.colorGreen.withOpacity(0.3)),
-                        ),
-                        child: Text(
-                          '${totalAchatsAnnee.toStringAsFixed(2)} €',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
-                              color: AppTheme.colorGreen),
-                        ),
-                      ),
-                    ]),
-                  ),
-                  if (achatsMois.isNotEmpty) ...[
-                    Divider(height: 1, color: AppTheme.bgCardBorder),
-                    Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(children: [
-                        Text('Détail par mois',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                                color: AppTheme.textPrimary)),
-                        const SizedBox(height: 8),
-                        for (final entry in (achatsMois.entries.toList()
-                          ..sort((a, b) => a.key.compareTo(b.key))))
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 3),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(_nomMoisCourt(int.parse(entry.key)),
-                                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                                Text('${entry.value.toStringAsFixed(2)} €',
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
-                                        color: AppTheme.colorGreen)),
-                              ],
-                            ),
-                          ),
-                      ]),
-                    ),
-                  ] else ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                      child: Text('Aucun achat saisi pour $annee.',
+                      child: Text('Non configuré.',
                           style: TextStyle(fontSize: 11, color: AppTheme.textTertiary)),
                     ),
                   ],
@@ -386,17 +403,22 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                     final totalKmPrec = kmPrec > 0
                         ? kmPrec
                         : widget.kmDomicileTravail * gsTrav.length;
-                    final paniersPrec = gsTrav.fold(0.0, (s, g) => s + g.panierRepasGarde);
-                    final achatsPrec = gardesAnneePrec.fold(0.0, (s, g) => s + g.totalAchats);
-                    final totalFrais = totalKmPrec * 0.099 + paniersPrec + achatsPrec; // 0.099€/km barème fiscal 2024
+                    final totalFrais = totalKmPrec * 0.099 + totalRepas + totalCarbu + totalMateriel;
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       child: Column(children: [
                         _ligneAttest('Km domicile-travail',
                             '${totalKmPrec.toStringAsFixed(0)} km',
                             sub: '${(totalKmPrec * 0.099).toStringAsFixed(2)} € (0,099 €/km)'),
-                        _ligneAttest('Paniers repas', '${paniersPrec.toStringAsFixed(2)} €'),
-                        _ligneAttest('Autres dépenses', '${achatsPrec.toStringAsFixed(2)} €'),
+                        _ligneAttest('Frais de repas',
+                            '${totalRepas.toStringAsFixed(2)} €',
+                            sub: 'Achats alimentaires sans panier'),
+                        _ligneAttest('Frais de carburant',
+                            '${totalCarbu.toStringAsFixed(2)} €',
+                            sub: 'Essence, gasoil, diesel'),
+                        _ligneAttest('Achats de matériels',
+                            '${totalMateriel.toStringAsFixed(2)} €',
+                            sub: 'Équipements et fournitures'),
                         Divider(color: AppTheme.bgCardBorder),
                         _ligneAttest('Total frais réels déductibles',
                             '${totalFrais.toStringAsFixed(2)} €', bold: true),
@@ -499,6 +521,16 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
     padding: const EdgeInsets.only(bottom: 8),
     child: Text(title.toUpperCase(), style: TextStyle(fontSize: 10,
         fontWeight: FontWeight.w500, color: AppTheme.textTertiary, letterSpacing: 0.8)),
+  );
+
+  Widget _fraisBadge(String label, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(color: color.withOpacity(0.3)),
+    ),
+    child: Text(label, style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w500)),
   );
 
   Widget _ligneCalc(String label, String value, String? sub, {bool isBold = false}) {

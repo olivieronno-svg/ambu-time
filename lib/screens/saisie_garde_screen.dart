@@ -82,6 +82,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     await _tts.setVolume(1.0);
     // Important: évite la coupure sur les points intermédiaires
     try { await _tts.setSharedInstance(true); } catch (_) {}
+    // Fait que await _tts.speak() attende vraiment la fin de la synthèse
+    try { await _tts.awaitSpeakCompletion(true); } catch (_) {}
     // Cherche automatiquement la meilleure voix Google française
     try {
       final voices = await _tts.getVoices as List?;
@@ -105,12 +107,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       }
     } catch (_) {}
     _tts.setCompletionHandler(() {
-      if (mounted) {
-        setState(() => _ttsActif = false);
-        if (_etatConv.isNotEmpty) {
-          Future.delayed(const Duration(milliseconds: 600), _ecouterReponse);
-        }
-      }
+      if (mounted) setState(() => _ttsActif = false);
     });
     _speechAvailable = await _speech.initialize(
       onStatus: (status) {
@@ -130,16 +127,12 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     await _speech.stop();
     setState(() { _ttsActif = true; _ecoute = false; });
     await _tts.stop();
-    await _tts.speak(texte);
-    // Timer de secours si completionHandler ne se déclenche pas (8s)
-    if (_etatConv.isNotEmpty) {
-      final etatTimer = _etatConv;
-      Future.delayed(const Duration(seconds: 8), () {
-        if (mounted && _etatConv == etatTimer && !_ecoute && _ttsActif) {
-          setState(() => _ttsActif = false);
-          _ecouterReponse();
-        }
-      });
+    await _tts.speak(texte); // bloquant grâce à awaitSpeakCompletion(true)
+    if (!mounted) return;
+    setState(() => _ttsActif = false);
+    if (_etatConv.isNotEmpty && !_ecoute) {
+      await Future.delayed(const Duration(milliseconds: 150));
+      if (mounted && _etatConv.isNotEmpty && !_ecoute) _ecouterReponse();
     }
   }
 
@@ -1856,8 +1849,19 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     final dejaCarbu = _achats.any((a) =>
         carbuMots.any((k) => a.intitule.toLowerCase().contains(k)));
     if (!dejaCarbu && tAchatNorm.contains(RegExp(r'(?:essence|carburant|gasoil|plein)'))) {
-      final mm = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(tAchatNorm);
-      final montant = mm != null ? (double.tryParse(mm.group(1) ?? '0') ?? 0) : 0.0;
+      // Priorité : "pour X" ou "X euros" — évite de capturer le "1" de "un plein"
+      double montant = 0.0;
+      final mmPour = RegExp(r'(?:pour|a)\s+(\d+(?:[.,]\d{1,2})?)').firstMatch(tAchatNorm);
+      final mmEuro = RegExp(r'(\d+(?:[.,]\d{1,2})?)\s*(?:euros?|€)').firstMatch(tAchatNorm);
+      if (mmPour != null) {
+        montant = double.tryParse(mmPour.group(1)!.replaceAll(',', '.')) ?? 0;
+      } else if (mmEuro != null) {
+        montant = double.tryParse(mmEuro.group(1)!.replaceAll(',', '.')) ?? 0;
+      } else {
+        // Dernier recours : dernier nombre du texte (ignore le "1" de "un")
+        final tous = RegExp(r'\d+(?:[.,]\d{1,2})?').allMatches(tAchatNorm).toList();
+        if (tous.isNotEmpty) montant = double.tryParse(tous.last.group(0)!.replaceAll(',', '.')) ?? 0;
+      }
       String intitule = 'Carburant';
       if (tAchatNorm.contains('essence')) intitule = 'Essence';
       if (tAchatNorm.contains('gasoil')) intitule = 'Gasoil';

@@ -116,10 +116,28 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       onStatus: (status) {
         if ((status == 'done' || status == 'notListening') && mounted) {
           setState(() => _ecoute = false);
+          // Relance automatiquement si le moteur s'est arrêté en pleine conversation
+          if (_etatConv.isNotEmpty && !_ttsActif) {
+            Future.delayed(const Duration(milliseconds: 400), () {
+              if (mounted && !_ecoute && !_ttsActif && _etatConv.isNotEmpty) {
+                _ecouterReponse();
+              }
+            });
+          }
         }
       },
       onError: (e) {
-        if (mounted) setState(() => _ecoute = false);
+        if (mounted) {
+          setState(() => _ecoute = false);
+          // Relance après une erreur si la conversation est toujours active
+          if (_etatConv.isNotEmpty && !_ttsActif) {
+            Future.delayed(const Duration(milliseconds: 600), () {
+              if (mounted && !_ecoute && !_ttsActif && _etatConv.isNotEmpty) {
+                _ecouterReponse();
+              }
+            });
+          }
+        }
       },
     );
   }
@@ -153,10 +171,20 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       onResult: (result) {
         if (!mounted) return;
         setState(() => _texteVocal = result.recognizedWords);
-        if (result.finalResult && result.recognizedWords.isNotEmpty) {
-          final rep = result.recognizedWords.trim();
-          setState(() { _ecoute = false; _texteVocal = ''; });
-          _traiterReponse(rep);
+        if (result.finalResult) {
+          if (result.recognizedWords.isNotEmpty) {
+            final rep = result.recognizedWords.trim();
+            setState(() { _ecoute = false; _texteVocal = ''; });
+            _traiterReponse(rep);
+          } else if (_etatConv.isNotEmpty && !_ttsActif) {
+            // Résultat vide (silence) — relance l'écoute
+            setState(() { _ecoute = false; _texteVocal = ''; });
+            Future.delayed(const Duration(milliseconds: 300), () {
+              if (mounted && !_ecoute && !_ttsActif && _etatConv.isNotEmpty) {
+                _ecouterReponse();
+              }
+            });
+          }
         }
       },
       listenFor: const Duration(seconds: 20),
@@ -191,6 +219,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         'montant_longue_distance': 'Quel est le montant de la prime longue distance ?',
         'confirmer': 'Dois-je sauvegarder cette garde ?',
         'confirmer_doublon': 'Voulez-vous quand meme enregistrer ?',
+        'confirmer_cp_garde': 'Voulez-vous enregistrer le congé quand même ?',
         'conge_debut': 'Quel est le premier jour ?',
         'conge_fin': 'Quel est le dernier jour ?',
       };

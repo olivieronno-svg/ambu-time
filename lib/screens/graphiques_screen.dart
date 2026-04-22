@@ -31,27 +31,58 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
   bool _afficherSalaire = true;
 
   List<_MoisData> _donneesParMois() {
-    Map<String, List<Garde>> parMois = {};
-    for (var g in widget.gardes) {
-      String cle = '${g.date.year}-${g.date.month.toString().padLeft(2, '0')}';
+    // Groupe uniquement les gardes travaillées (hors CP)
+    final Map<String, List<Garde>> parMois = {};
+    for (var g in widget.gardes.where((g) => !g.isCongesPaies)) {
+      final cle = '${g.date.year}-${g.date.month.toString().padLeft(2, '0')}';
       parMois.putIfAbsent(cle, () => []);
       parMois[cle]!.add(g);
     }
+
+    // Ajoute les mois couverts par des CP (même sans garde travaillée ce mois)
+    final cpGardes = widget.gardes.where((g) => g.isCongesPaies).toList();
+    for (var g in cpGardes) {
+      final fin = g.cpDateFin ?? g.date;
+      for (int i = 0; i <= fin.difference(g.date).inDays; i++) {
+        final jour = g.date.add(Duration(days: i));
+        final cle = '${jour.year}-${jour.month.toString().padLeft(2, '0')}';
+        parMois.putIfAbsent(cle, () => []);
+      }
+    }
+
+    final taux = widget.tauxHoraire;
+    // Taux journalier CP selon CCN (approximation sans brut période de référence)
+    final tauxJournalierCP = ((152 * taux) + (17 * taux * 1.25)) / 26;
+
     final cles = parMois.keys.toList()..sort();
     return cles.map((cle) {
       final parts = cle.split('-');
       final mois = int.parse(parts[1]);
       final annee = int.parse(parts[0]);
       final gardesMois = parMois[cle]!;
+
       final brut = Calculs.totalBrut(gardesMois,
-          taux: widget.tauxHoraire, panier: widget.panierRepas,
+          taux: taux, panier: widget.panierRepas,
           indDimanche: widget.indemnitesDimanche, montantIdaj: widget.montantIdaj);
       final heures = Calculs.totalHeures(gardesMois);
       final supp = Calculs.heuresSupp(gardesMois);
       final nbGardes = gardesMois.where((g) => !g.jourNonTravaille).length;
+
+      // Indemnité CP : compte les jours CP tombant dans ce mois
+      int joursCP = 0;
+      for (var g in cpGardes) {
+        final fin = g.cpDateFin ?? g.date;
+        for (int i = 0; i <= fin.difference(g.date).inDays; i++) {
+          final jour = g.date.add(Duration(days: i));
+          if (jour.year == annee && jour.month == mois) joursCP++;
+        }
+      }
+      final indemniteCp = joursCP * tauxJournalierCP;
+      final brutTotal = brut + indemniteCp;
+
       return _MoisData(
         cle: cle, mois: mois, annee: annee,
-        brut: brut, net: Calculs.netEstime(brut),
+        brut: brutTotal, net: Calculs.netEstime(brutTotal),
         heures: heures, heuresSupp: supp, nbGardes: nbGardes,
       );
     }).toList();

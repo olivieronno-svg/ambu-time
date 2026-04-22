@@ -202,14 +202,23 @@ class SalaireScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Column(children: [
-                  Text('${_nomMois(now.month)} ${now.year}',
-                      style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.6))),
-                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${_nomMois(now.month).toUpperCase()} ${now.year}',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Text('${brutAvecPrimesMois.toStringAsFixed(0)} €',
-                      style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w500, color: Colors.white, height: 1)),
+                      style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w700, color: Colors.white, height: 1)),
                   const SizedBox(height: 4),
                   Text('Salaire brut estimé',
-                      style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.55))),
+                      style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.7))),
                   const SizedBox(height: 14),
                   // Pilules
                   Row(children: [
@@ -244,7 +253,13 @@ class SalaireScreen extends StatelessWidget {
                 Expanded(child: _encartResume(
                   titre: 'SALAIRE',
                   lignes: [
-                    ('Base + maj.', '${(baseHeures + totalMajNuit + totalMajDim + majSuppMois).toStringAsFixed(0)} €', const Color(0xFF185FA5)),
+                    ('Base', '${baseHeures.toStringAsFixed(0)} €', const Color(0xFF185FA5)),
+                    if (totalMajNuit > 0)
+                      ('Nuit +25%', '+${totalMajNuit.toStringAsFixed(0)} €', const Color(0xFF185FA5)),
+                    if (totalMajDim > 0)
+                      ('Dim. +25%', '+${totalMajDim.toStringAsFixed(0)} €', const Color(0xFF185FA5)),
+                    if (majSuppMois > 0)
+                      ('HS CCN', '+${majSuppMois.toStringAsFixed(0)} €', const Color(0xFF185FA5)),
                     ('Dim./fériés', '+${totalIndDim.toStringAsFixed(0)} €', const Color(0xFFBA7517)),
                     ('IDAJ', '+${totalIdaj.toStringAsFixed(0)} €', const Color(0xFF0F6E56)),
                     ('Paniers', '+${totalPaniers.toStringAsFixed(0)} €', const Color(0xFF0F6E56)),

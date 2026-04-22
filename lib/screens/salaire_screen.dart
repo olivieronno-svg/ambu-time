@@ -1,5 +1,7 @@
-
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../models/garde.dart';
 import '../models/prime.dart';
 import '../utils/calculs.dart';
@@ -16,6 +18,7 @@ class SalaireScreen extends StatelessWidget {
   final double impotSource;
   final double congesAcquisAvant;
   final int modeCp;
+  final double brutPeriodeRef;
   final DateTime? debutQuatorzaine;
 
   const SalaireScreen({
@@ -30,6 +33,7 @@ class SalaireScreen extends StatelessWidget {
     this.impotSource = 0,
     this.congesAcquisAvant = 0,
     this.modeCp = 0,
+    this.brutPeriodeRef = 0,
     this.debutQuatorzaine,
   });
 
@@ -75,91 +79,75 @@ class SalaireScreen extends StatelessWidget {
         indDimanche: indemnitesDimanche, montantIdaj: montantIdaj);
     double totalPrimesMensuelles = primes.fold(0.0, (s, p) => s + p.montant);
     double primeAnnuelleApplicable = estMai ? primeAnnuelle : 0;
-    double brutAvecPrimesMois = brutMois + totalPrimesMensuelles + primeAnnuelleApplicable;
+    // CP pour le header (calculé avant la section détail)
+    int _joursCP_header = 0;
+    for (final g in gardes.where((gg) => gg.isCongesPaies)) {
+      final debut = g.date; final fin = g.cpDateFin ?? g.date;
+      for (int i = 0; i <= fin.difference(debut).inDays; i++) {
+        final jour = debut.add(Duration(days: i));
+        if (jour.year == now.year && jour.month == now.month) _joursCP_header++;
+      }
+    }
+    final double _tauxJourHeader = brutPeriodeRef > 0 ? brutPeriodeRef / 26 : ((152 * tauxHoraire) + (17 * tauxHoraire * 1.25)) / 26;
+    final double _cpHeader = _joursCP_header * _tauxJourHeader;
+    double brutAvecPrimesMois = brutMois + totalPrimesMensuelles + primeAnnuelleApplicable + _cpHeader;
     double netBrutMois = Calculs.netEstime(brutAvecPrimesMois);
     double montantImpotMois = impotSource > 0 ? netBrutMois * (impotSource / 100) : 0;
     double netFinalMois = netBrutMois - montantImpotMois;
 
-    // ── Toutes les gardes pour le détail du calcul ───────────────────
-    double totalHeures = Calculs.totalHeures(gardes);
-    double brut = Calculs.totalBrut(gardes,
+    // ── Gardes du mois pour le détail du calcul ──────────────────────
+    final gardesMois = gardesMoisCours; // alias clair
+    double totalHeures = Calculs.totalHeures(gardesMois);
+    double brut = Calculs.totalBrut(gardesMois,
         taux: tauxHoraire, panier: panierRepas,
         indDimanche: indemnitesDimanche, montantIdaj: montantIdaj);
-    double heuresSupp = Calculs.heuresSupp(gardes);
-    double majSupp = Calculs.majorationHeuresSupp(gardes, tauxHoraire);
+    double heuresSupp = Calculs.heuresSupp(gardesMois);
+    double majSupp = Calculs.majorationHeuresSupp(gardesMois, tauxHoraire);
 
-    // ── HS par quatorzaine CCN — rattachées au mois de fin de quatorzaine ──
+    // ── HS par quatorzaine CCN — rattachées au mois en cours ──────────
     final hsSuppParMois = Calculs.heuresSuppParMois(gardes, debutQuatorzaine);
     final moisCle = '${now.year}-${now.month.toString().padLeft(2,'0')}';
     final hsSuppMois = hsSuppParMois[moisCle] ?? 0;
     final majSuppMois = Calculs.majorationHSSurMontant(hsSuppMois, tauxHoraire);
-    double totalNuit = gardes.fold(0.0, (s, g) => s + Calculs.heuresNuit(g));
-    double totalMajNuit = gardes.fold(0.0, (s, g) => s + Calculs.majorationNuit(g, tauxHoraire));
-    double totalMajDim = gardes.fold(0.0, (s, g) => s + Calculs.majorationDimanche(g, tauxHoraire));
-    double totalIdaj = gardes.fold(0.0, (s, g) => s + Calculs.idaj(g, montantIdaj));
-    int nbDimanche = gardes.where((g) => g.isDimancheOuFerie).length;
-    double totalPaniers = gardes.fold(0.0, (s, g) => s + g.panierRepasGarde);
+    double totalNuit = gardesMois.fold(0.0, (s, g) => s + Calculs.heuresNuit(g));
+    double totalMajNuit = gardesMois.fold(0.0, (s, g) => s + Calculs.majorationNuit(g, tauxHoraire));
+    double totalMajDim = gardesMois.fold(0.0, (s, g) => s + Calculs.majorationDimanche(g, tauxHoraire));
+    double totalIdaj = gardesMois.fold(0.0, (s, g) => s + Calculs.idaj(g, montantIdaj));
+    int nbDimanche = gardesMois.where((g) => g.isDimancheOuFerie).length;
+    double totalPaniers = gardesMois.fold(0.0, (s, g) => s + g.panierRepasGarde);
+    double totalLongueDistance = gardesMois.fold(0.0, (s, g) => s + g.primeLongueDistance);
     double totalIndDim = nbDimanche * indemnitesDimanche;
     double baseHeures = totalHeures * tauxHoraire;
     double brutAvecPrimes = brut + totalPrimesMensuelles + primeAnnuelleApplicable;
 
-    // ── CP du mois en cours ──────────────────────────────────────────
-    final gardesCpMois = gardesMoisCours.where((g) => g.isCongesPaies).toList();
-    final joursCP_mois = gardesCpMois.fold(0, (s, g) => s + g.nbJoursCP);
-    final indemniteCpMois = joursCP_mois * 7 * tauxHoraire; // estimation min CCN
-
-    // ── Calcul indemnité CP ───────────────────────────────────────
-    final gardesCp = gardes.where((g) => g.isCongesPaies).toList();
-    final totalJoursCP = gardesCp.fold(0, (s, g) => s + g.nbJoursCP);
-    double indemniteCp = 0;
-    String labelModeCp = '';
-
-    if (gardesCp.isNotEmpty && totalJoursCP > 0) {
-      final now2 = DateTime.now();
-      // Période de référence : 1er juin N-1 → 31 mai N
-      final debutRef = now2.month >= 6
-          ? DateTime(now2.year - 1, 6, 1) : DateTime(now2.year - 2, 6, 1);
-      final finRef = DateTime(debutRef.year + 1, 5, 31);
-      final gardesRef = gardes.where((g) =>
-          !g.jourNonTravaille && !g.isCongesPaies &&
-          !g.date.isBefore(debutRef) && !g.date.isAfter(finRef)).toList();
-
-      final brutRef = Calculs.totalBrut(gardesRef,
-          taux: tauxHoraire, panier: panierRepas,
-          indDimanche: indemnitesDimanche, montantIdaj: montantIdaj);
-
-      // Nombre de jours travaillés dans la période de référence
-      final nbJoursRef = gardesRef.length;
-
-      // Méthode 1 : 1/10 du brut annuel de référence
-      // L'indemnité totale annuelle = brutRef/10 → pour N jours sur 30 : × (N/30)
-      final indemn1_10 = brutRef > 0
-          ? (brutRef / 10) * (totalJoursCP / 30)
-          : tauxHoraire * 7 * totalJoursCP;
-
-      // Méthode 2 : maintien du salaire
-      // Salaire moyen journalier = brut ref / nb jours travaillés en ref
-      final salMoyenJour = nbJoursRef > 0
-          ? brutRef / nbJoursRef
-          : tauxHoraire * 7;
-      final indemn2Maintien = salMoyenJour * totalJoursCP;
-
-      if (modeCp == 1) {
-        indemniteCp = indemn1_10;
-        labelModeCp = 'Règle du 1/10';
-      } else if (modeCp == 2) {
-        indemniteCp = indemn2Maintien;
-        labelModeCp = 'Maintien du salaire';
-      } else {
-        if (indemn2Maintien >= indemn1_10) {
-          indemniteCp = indemn2Maintien;
-          labelModeCp = 'Maintien (plus favorable)';
-        } else {
-          indemniteCp = indemn1_10;
-          labelModeCp = '1/10 (plus favorable)';
+    // ── CP du mois en cours — avec gestion CP chevauchant 2 mois ──
+    int joursCP_mois = 0;
+    for (final g in gardes.where((gg) => gg.isCongesPaies)) {
+      final debut = g.date;
+      final fin = g.cpDateFin ?? g.date;
+      // Calculer les jours qui tombent dans le mois courant
+      for (int i = 0; i <= fin.difference(debut).inDays; i++) {
+        final jour = debut.add(Duration(days: i));
+        if (jour.year == now.year && jour.month == now.month) {
+          joursCP_mois++;
         }
       }
     }
+    // ── Indemnité CP CCN — taux journalier exact ÷ 26 ──────────────
+    // Si brut période de référence saisi → calcul exact comme l'employeur
+    // Sinon → approximation CCN : (152h × taux + 17h × taux × 1.25) ÷ 26
+    final double tauxJournalierCP;
+    if (brutPeriodeRef > 0) {
+      // Méthode exacte : brut période de référence ÷ 26 jours ouvrés
+      tauxJournalierCP = brutPeriodeRef / 26;
+    } else {
+      // Approximation CCN
+      final salaireBaseMensuel = (152 * tauxHoraire) + (17 * tauxHoraire * 1.25);
+      tauxJournalierCP = salaireBaseMensuel / 26;
+    }
+    final indemniteCp = joursCP_mois * tauxJournalierCP;
+    final int totalJoursCP = joursCP_mois;
+    final String labelModeCp = 'CCN ÷ 26 jours';
 
     // CP ajouté au brut avant calcul net
     brutAvecPrimes += indemniteCp;
@@ -175,192 +163,132 @@ class SalaireScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Simulation salaire', style: AppTheme.titleStyle()),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text('Simulation salaire', style: AppTheme.titleStyle()),
+                GestureDetector(
+                  onTap: () => _exporterPDF(
+                    context: context, now: now,
+                    brutAvecPrimesMois: brutAvecPrimesMois,
+                    netBrutMois: netBrutMois, netFinalMois: netFinalMois,
+                    totalHeures: totalHeures, baseHeures: baseHeures,
+                    totalMajNuit: totalMajNuit, totalMajDim: totalMajDim,
+                    majSuppMois: majSuppMois, totalIdaj: totalIdaj,
+                    totalPaniers: totalPaniers, totalIndDim: totalIndDim,
+                    totalLongueDistance: totalLongueDistance,
+                    indemniteCpMois: 0, joursCP_mois: joursCP_mois,
+                    indemniteCp: indemniteCp, totalJoursCP: totalJoursCP,
+                    labelModeCp: labelModeCp, primes: primes,
+                    primeAnnuelle: primeAnnuelle, estMai: estMai,
+                    montantImpot: montantImpot, impotSource: impotSource,
+                    nbGardes: gardesMoisCours.where((g) => !g.jourNonTravaille).length,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: AppTheme.colorGreen.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.colorGreen.withOpacity(0.4)),
+                    ),
+                    child: Row(children: [
+                      Icon(Icons.picture_as_pdf_outlined, size: 14, color: AppTheme.colorGreen),
+                      const SizedBox(width: 5),
+                      Text('Export PDF', style: TextStyle(fontSize: 11, color: AppTheme.colorGreen, fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ),
+              ]),
               const SizedBox(height: 4),
               Text('Taux horaire : ${tauxHoraire.toStringAsFixed(2)} €/h',
                   style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
               const SizedBox(height: 16),
 
-              // ── Carte principale ───────────────────────────────────
+              // ── Carte principale — Modèle 1 ───────────────────────
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
-                decoration: AppTheme.cardDecoration(),
-                child: Column(
-                  children: [
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Text('Salaire brut estimé',
-                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.blueAccent.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '${_nomMois(now.month)} ${now.year}',
-                          style: const TextStyle(fontSize: 10,
-                              color: AppTheme.blueAccent, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ]),
-                    const SizedBox(height: 8),
-                    Text('${brutAvecPrimesMois.toStringAsFixed(2)} €',
-                        style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w600,
-                            color: AppTheme.green)),
-                    const SizedBox(height: 4),
-                    Text('Net avant impôt : ${netBrutMois.toStringAsFixed(2)} €',
-                        style: const TextStyle(fontSize: 13, color: AppTheme.blue,
-                            fontWeight: FontWeight.w500)),
-                    if (impotSource > 0) ...[
-                      const SizedBox(height: 2),
-                      Text('Net après impôt (${impotSource.toStringAsFixed(1)}%) : ${netFinalMois.toStringAsFixed(2)} €',
-                          style: TextStyle(fontSize: 15, color: AppTheme.colorGreen,
-                              fontWeight: FontWeight.w700)),
-                    ],
-                    if (gardesMoisCours.isEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text('Aucune garde ce mois-ci',
-                          style: TextStyle(fontSize: 11, color: AppTheme.textTertiary)),
-                    ] else ...[
-                      const SizedBox(height: 4),
-                      Text('${gardesMoisCours.where((g) => !g.jourNonTravaille).length} garde(s) · ${Calculs.formatHeures(totalHeuresMois)}',
-                          style: TextStyle(fontSize: 10, color: AppTheme.textTertiary)),
-                    ],
-                    if (estMai && primeAnnuelle > 0) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.amber.withOpacity(0.4)),
-                        ),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.star_rounded, size: 14, color: Colors.amber),
-                          const SizedBox(width: 6),
-                          Text('Prime annuelle incluse : +${primeAnnuelle.toStringAsFixed(2)} €',
-                              style: const TextStyle(fontSize: 11, color: Colors.amber,
-                                  fontWeight: FontWeight.w500)),
-                        ]),
-                      ),
-                    ],
-                  ],
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0C447C),
+                  borderRadius: BorderRadius.circular(18),
                 ),
+                child: Column(children: [
+                  Text('${_nomMois(now.month)} ${now.year}',
+                      style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.6))),
+                  const SizedBox(height: 6),
+                  Text('${brutAvecPrimesMois.toStringAsFixed(0)} €',
+                      style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w500, color: Colors.white, height: 1)),
+                  const SizedBox(height: 4),
+                  Text('Salaire brut estimé',
+                      style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.55))),
+                  const SizedBox(height: 14),
+                  // Pilules
+                  Row(children: [
+                    _pilule('${netBrutMois.toStringAsFixed(0)} €', 'Net'),
+                    const SizedBox(width: 8),
+                    _pilule(impotSource > 0 ? '${netFinalMois.toStringAsFixed(0)} €' : '—', 'Après impôt'),
+                    const SizedBox(width: 8),
+                    _pilule(Calculs.formatHeures(totalHeuresMois), 'Travaillées'),
+                  ]),
+                  if (estMai && primeAnnuelle > 0) ...[
+                    const SizedBox(height: 10),
+                    Text('⭐ Prime annuelle incluse : +${primeAnnuelle.toStringAsFixed(0)} €',
+                        style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.6))),
+                  ],
+                  const SizedBox(height: 10),
+                  Text(
+                    gardesMoisCours.isEmpty
+                        ? 'Aucune garde ce mois-ci'
+                        : '${gardesMoisCours.where((g) => !g.jourNonTravaille).length} garde(s) · ${impotSource > 0 ? "${impotSource.toStringAsFixed(1)}% prélevé à la source" : "Pas de prélèvement"}',
+                    style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.45)),
+                  ),
+                ]),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
               Text('DÉTAIL DU CALCUL',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
                       color: AppTheme.textTertiary, letterSpacing: 0.8)),
               const SizedBox(height: 8),
 
-              Container(
-                decoration: AppTheme.cardDecoration(),
-                child: Column(
-                  children: [
-                    _ligne('Heures de base',
-                        '${Calculs.formatHeures(totalHeures)} × ${tauxHoraire.toStringAsFixed(2)} €/h',
-                        '${baseHeures.toStringAsFixed(2)} €', false),
-                    _divider(),
-                    _ligne('Maj. nuit (21h–6h)',
-                        totalNuit > 0
-                            ? '${Calculs.formatHeures(totalNuit)} × +25%'
-                            : 'Aucune heure de nuit',
-                        '+${totalMajNuit.toStringAsFixed(2)} €', false),
-                    _divider(),
-                    _ligne('Maj. dim. / jour férié',
-                        nbDimanche > 0
-                            ? '$nbDimanche jour(s) × +25% du taux horaire'
-                            : 'Aucun dimanche / férié',
-                        '+${totalMajDim.toStringAsFixed(2)} €', false),
-                    _divider(),
-                    _ligne('Heures supp. (CCN > 78h/quatorz.)',
-                        hsSuppMois > 0
-                            ? '${Calculs.formatHeures(hsSuppMois)} rattachées à ce mois'
-                            : heuresSupp > 0
-                                ? '${Calculs.formatHeures(heuresSupp)} — rattachées au mois de fin'
-                                : 'Seuil de 78h non atteint',
-                        '+${majSuppMois.toStringAsFixed(2)} €', false),
-                    _divider(),
-                    _ligne('IDAJ (amplitude > 12h)',
-                        gardes.where((g) => g.hasIDAJ).isNotEmpty
-                            ? '${gardes.where((g) => g.hasIDAJ).length} garde(s) — +75%/+100%'
-                            : 'Aucune garde > 12h amplitude',
-                        '+${totalIdaj.toStringAsFixed(2)} €', false),
-                    _divider(),
-                    _ligne('Paniers repas',
-                        '${gardes.where((g) => g.avecPanier).length} garde(s) avec panier',
-                        '+${totalPaniers.toStringAsFixed(2)} €', false),
-                    _divider(),
-                    _ligne('Ind. forfait dim. / férié',
-                        nbDimanche > 0
-                            ? '$nbDimanche jour(s) × ${indemnitesDimanche.toStringAsFixed(2)} €'
-                            : 'Aucun dimanche / férié',
-                        '+${totalIndDim.toStringAsFixed(2)} €', false),
-                    _divider(),
-                    _ligne('Total brut gardes', 'cumul de tous les éléments ci-dessus',
-                        '${brut.toStringAsFixed(2)} €', true, color: AppTheme.blue),
-
-                    // ── Congés payés du mois ──────────────────────────
-                    if (joursCP_mois > 0) ...[
-                      _divider(),
-                      _ligne('CP pris ce mois',
-                          '$joursCP_mois jour(s) × 7h × ${tauxHoraire.toStringAsFixed(2)} €/h',
-                          '+${indemniteCpMois.toStringAsFixed(2)} €', false,
-                          color: const Color(0xFF1D9E75)),
-                    ],
-
-                    // ── Congés payés globaux ──────────────────────────
-                    if (gardesCp.isNotEmpty) ...[
-                      _divider(),
-                      _ligne('Indemnité CP',
-                          '$totalJoursCP jour(s) — $labelModeCp',
-                          '+${indemniteCp.toStringAsFixed(2)} €', false,
-                          color: const Color(0xFF1D9E75)),
-                    ],
-
-                    // ── Primes dynamiques ──────────────────────────
-                    for (final p in primes) ...[
-                      _divider(),
-                      _ligne(p.nom, 'prime mensuelle',
-                          '+${p.montant.toStringAsFixed(2)} €', false,
-                          color: Colors.amber),
-                    ],
-                    if (estMai && primeAnnuelle > 0) ...[
-                      _divider(),
-                      _ligne('Prime annuelle', 'versée en mai uniquement',
-                          '+${primeAnnuelle.toStringAsFixed(2)} €', false,
-                          color: Colors.amber),
-                    ],
-                    if (primes.isNotEmpty || (estMai && primeAnnuelle > 0)) ...[
-                      _divider(),
-                      _ligne('Total brut avec primes', 'base charges salariales',
-                          '${brutAvecPrimes.toStringAsFixed(2)} €', true,
-                          color: AppTheme.green),
-                    ],
-                    _divider(),
-                    _ligne('Net estimé (~78%)', 'estimation indicative',
-                        '${netBrut.toStringAsFixed(2)} €', true, color: AppTheme.blue),
-
-                    if (impotSource > 0) ...[
-                      _divider(),
-                      _ligne('Impôt prél. à la source',
-                          '${impotSource.toStringAsFixed(1)}% du net (×1/mois)',
-                          '- ${montantImpot.toStringAsFixed(2)} €', false,
-                          color: AppTheme.red),
-                      _divider(),
-                      _ligne('Net après impôt', 'montant perçu',
-                          '${netFinal.toStringAsFixed(2)} €', true,
-                          color: AppTheme.colorGreen),
-                    ],
+              Row(children: [
+                Expanded(child: _encartResume(
+                  titre: 'SALAIRE',
+                  lignes: [
+                    ('Base + maj.', '${(baseHeures + totalMajNuit + totalMajDim + majSuppMois).toStringAsFixed(0)} €', const Color(0xFF185FA5)),
+                    ('Dim./fériés', '+${totalIndDim.toStringAsFixed(0)} €', const Color(0xFFBA7517)),
+                    ('IDAJ', '+${totalIdaj.toStringAsFixed(0)} €', const Color(0xFF0F6E56)),
+                    ('Paniers', '+${totalPaniers.toStringAsFixed(0)} €', const Color(0xFF0F6E56)),
+                    if (totalJoursCP > 0)
+                      ('CP $totalJoursCP j.', '+${indemniteCp.toStringAsFixed(0)} €', const Color(0xFF0F6E56)),
                   ],
-                ),
+                )),
+                const SizedBox(width: 8),
+                Expanded(child: _encartResume(
+                  titre: 'PRIMES',
+                  lignes: [
+                    if (totalLongueDistance > 0)
+                      ('Longue dist.', '+${totalLongueDistance.toStringAsFixed(0)} €', const Color(0xFF0F6E56)),
+                    for (final p in primes)
+                      (p.nom, '+${p.montant.toStringAsFixed(0)} €', Colors.amber),
+                    if (estMai && primeAnnuelle > 0)
+                      ('Prime annuelle', '+${primeAnnuelle.toStringAsFixed(0)} €', Colors.amber),
+                    if (totalLongueDistance == 0 && primes.isEmpty && !(estMai && primeAnnuelle > 0))
+                      ('—', '0 €', AppTheme.textTertiary),
+                  ],
+                )),
+              ]),
+              const SizedBox(height: 8),
+              _encartResume(
+                titre: 'PRÉLÈVEMENTS',
+                lignes: [
+                  if (impotSource > 0)
+                    ('Impôt prél. source', '−${montantImpot.toStringAsFixed(0)} €', AppTheme.colorRed),
+                  if (impotSource == 0)
+                    ('Aucun prélèvement', '0 €', AppTheme.textTertiary),
+                ],
               ),
               const SizedBox(height: 16),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 4),
 
               // ── Congés payés ───────────────────────────────────────
               _sectionTitre('CONGÉS PAYÉS (CCN)'),
@@ -528,56 +456,21 @@ class SalaireScreen extends StatelessWidget {
                         Icon(Icons.auto_graph, size: 16, color: AppTheme.colorGreen),
                         const SizedBox(width: 8),
                         Expanded(child: Text(
-                          'Moyenne des salaires mensuels',
+                          'Prime annuelle',
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
                               color: AppTheme.textPrimary),
                         )),
                         Text(
-                          '${(evolution.last['moyenne'] as double).toStringAsFixed(2)} €',
+                          '${((evolution.last['moyenne'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)} €',
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
                               color: AppTheme.colorGreen),
                         ),
                       ]),
                     ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
-                      child: Text('Versée en mai comme prime annuelle',
-                          style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-                    ),
-                    const SizedBox(height: 8),
-                    Padding(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                      child: Column(children: [
-                        for (final e in evolution.reversed.take(6).toList().reversed)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 3),
-                            child: Row(children: [
-                              SizedBox(width: 44, child: Text(
-                                '${_moisNoms[e['mois']]} ${(e['annee'] as int) % 100}',
-                                style: TextStyle(fontSize: 10, color: AppTheme.textSecondary),
-                              )),
-                              Expanded(child: ClipRRect(
-                                borderRadius: BorderRadius.circular(3),
-                                child: LinearProgressIndicator(
-                                  value: (e['brut'] as double) / (evolution
-                                      .map((x) => x['brut'] as double)
-                                      .reduce((a, b) => a > b ? a : b)),
-                                  minHeight: 6,
-                                  backgroundColor: AppTheme.bgCard,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppTheme.blueAccent.withOpacity(0.6)),
-                                ),
-                              )),
-                              const SizedBox(width: 8),
-                              SizedBox(width: 65, child: Text(
-                                '${(e['brut'] as double).toStringAsFixed(0)} €',
-                                textAlign: TextAlign.right,
-                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-                                    color: AppTheme.blueAccent),
-                              )),
-                            ]),
-                          ),
-                      ]),
+                      child: Text('Versée en mai',
+                          style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
                     ),
                   ]),
                 ),
@@ -623,11 +516,218 @@ class SalaireScreen extends StatelessWidget {
         color: AppTheme.textTertiary, letterSpacing: 0.8)),
   );
 
+  Future<void> _exporterPDF({
+    required BuildContext context,
+    required DateTime now,
+    required double brutAvecPrimesMois,
+    required double netBrutMois,
+    required double netFinalMois,
+    required double totalHeures,
+    required double baseHeures,
+    required double totalMajNuit,
+    required double totalMajDim,
+    required double majSuppMois,
+    required double totalIdaj,
+    required double totalPaniers,
+    required double totalIndDim,
+    required double totalLongueDistance,
+    required double indemniteCpMois,
+    required int joursCP_mois,
+    required double indemniteCp,
+    required int totalJoursCP,
+    required String labelModeCp,
+    required List<PrimeMensuelle> primes,
+    required double primeAnnuelle,
+    required bool estMai,
+    required double montantImpot,
+    required double impotSource,
+    required int nbGardes,
+  }) async {
+    final pdf = pw.Document();
+    final moisNom = _nomMois(now.month);
+
+    pw.Widget _ligne(String label, String detail, String val, {bool bold = false, PdfColor? color}) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 4),
+        child: pw.Row(children: [
+          pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Text(label, style: pw.TextStyle(fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+            if (detail.isNotEmpty)
+              pw.Text(detail, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+          ])),
+          pw.Text(val, style: pw.TextStyle(fontSize: 10, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+              color: color)),
+        ]),
+      );
+
+    pdf.addPage(pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(32),
+      build: (pw.Context ctx) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        // En-tête
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.all(16),
+          decoration: pw.BoxDecoration(color: PdfColor(0.047, 0.267, 0.486), borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8))),
+          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Text('FEUILLE DE SALAIRE', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+            pw.Text('$moisNom ${now.year}  ·  $nbGardes garde(s)  ·  ${Calculs.formatHeures(totalHeures)} travaillées',
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey200)),
+          ]),
+        ),
+        pw.SizedBox(height: 16),
+
+        // 3 montants
+        pw.Row(children: [
+          pw.Expanded(child: pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6))),
+            child: pw.Column(children: [
+              pw.Text('Brut total', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              pw.Text('${brutAvecPrimesMois.toStringAsFixed(2)} €', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor(0.094, 0.373, 0.647))),
+            ]),
+          )),
+          pw.SizedBox(width: 8),
+          pw.Expanded(child: pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6))),
+            child: pw.Column(children: [
+              pw.Text('Net estimé', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              pw.Text('${netBrutMois.toStringAsFixed(2)} €', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor(0.059, 0.431, 0.337))),
+            ]),
+          )),
+          if (impotSource > 0) ...[
+            pw.SizedBox(width: 8),
+            pw.Expanded(child: pw.Container(
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey300), borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6))),
+              child: pw.Column(children: [
+                pw.Text('Net après impôt', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                pw.Text('${netFinalMois.toStringAsFixed(2)} €', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColor(0.114, 0.620, 0.459))),
+              ]),
+            )),
+          ],
+        ]),
+        pw.SizedBox(height: 16),
+
+        // Détail
+        pw.Text('DÉTAIL DU CALCUL', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600)),
+        pw.Divider(),
+        _ligne('Heures de base', '${Calculs.formatHeures(totalHeures)} travaillées', '${baseHeures.toStringAsFixed(2)} €'),
+        _ligne('Majorations nuit', totalMajNuit > 0 ? '+25%' : 'Aucune', '+${totalMajNuit.toStringAsFixed(2)} €'),
+        _ligne('Maj. dim./fériés', totalMajDim > 0 ? '+25%' : 'Aucune', '+${totalMajDim.toStringAsFixed(2)} €'),
+        _ligne('Heures supp.', majSuppMois > 0 ? 'CCN > 78h' : 'Seuil non atteint', '+${majSuppMois.toStringAsFixed(2)} €'),
+        _ligne('IDAJ', totalIdaj > 0 ? '> 12h amplitude' : 'Aucune', '+${totalIdaj.toStringAsFixed(2)} €'),
+        _ligne('Ind. forfait dim./férié', '', '+${totalIndDim.toStringAsFixed(2)} €'),
+        _ligne('Paniers repas', '', '+${totalPaniers.toStringAsFixed(2)} €'),
+        if (totalLongueDistance > 0) _ligne('Prime longue distance', '', '+${totalLongueDistance.toStringAsFixed(2)} €'),
+        if (joursCP_mois > 0) _ligne('CP ce mois ($joursCP_mois j.)', 'CCN ÷ 26 jours', '+${indemniteCp.toStringAsFixed(2)} €', color: PdfColor(0.059, 0.431, 0.337)),
+        if (totalJoursCP > 0) _ligne('Indemnité CP', '$totalJoursCP j. — $labelModeCp', '+${indemniteCp.toStringAsFixed(2)} €', color: PdfColor(0.059, 0.431, 0.337)),
+        for (final p in primes) _ligne(p.nom, 'prime mensuelle', '+${p.montant.toStringAsFixed(2)} €'),
+        if (estMai && primeAnnuelle > 0) _ligne('Prime annuelle', 'versée en mai', '+${primeAnnuelle.toStringAsFixed(2)} €'),
+        pw.Divider(),
+        _ligne('Brut total', '', '${brutAvecPrimesMois.toStringAsFixed(2)} €', bold: true, color: PdfColor(0.094, 0.373, 0.647)),
+        _ligne('Net estimé (~78%)', '', '${netBrutMois.toStringAsFixed(2)} €', bold: true, color: PdfColor(0.059, 0.431, 0.337)),
+        if (impotSource > 0) ...[
+          _ligne('Impôt (${impotSource.toStringAsFixed(1)}%)', '', '- ${montantImpot.toStringAsFixed(2)} €', color: PdfColors.red),
+          _ligne('Net après impôt', '', '${netFinalMois.toStringAsFixed(2)} €', bold: true, color: PdfColor(0.114, 0.620, 0.459)),
+        ],
+
+        pw.Spacer(),
+        pw.Text('Document généré par Ambu Time — ${now.day}/${now.month}/${now.year}',
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey400)),
+      ]),
+    ));
+
+    await Printing.layoutPdf(onLayout: (fmt) async => pdf.save());
+  }
+
   String _nomMois(int mois) {
     const noms = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
         'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
     return noms[mois];
   }
+
+  Widget _pilule(String val, String lbl) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(children: [
+        Text(val, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.white)),
+        const SizedBox(height: 2),
+        Text(lbl, style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.55))),
+      ]),
+    ),
+  );
+
+  Widget _encartResume({required String titre, required List<(String, String, Color)> lignes}) =>
+    Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: AppTheme.cardDecoration(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(titre, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
+            color: AppTheme.textSecondary, letterSpacing: 0.4)),
+        const SizedBox(height: 8),
+        ...lignes.map((l) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text(l.$1, style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+            Text(l.$2, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: l.$3)),
+          ]),
+        )),
+      ]),
+    );
+
+  Widget _miniCard(String label, String val, Color color) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: AppTheme.cardDecoration(),
+      child: Column(children: [
+        Text(label, style: TextStyle(fontSize: 9, color: AppTheme.textTertiary)),
+        const SizedBox(height: 3),
+        Text(val, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: color)),
+      ]),
+    ),
+  );
+
+  Widget _groupeCalcul({
+    required String titre,
+    required double total,
+    required Color couleurTotal,
+    required List<Widget> lignes,
+  }) => Container(
+    decoration: AppTheme.cardDecoration(),
+    child: Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(titre, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
+              color: AppTheme.textSecondary, letterSpacing: 0.4)),
+          Text('${total >= 0 ? "+" : ""}${total.toStringAsFixed(0)} €',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: couleurTotal)),
+        ]),
+      ),
+      Divider(height: 1, color: AppTheme.bgCardBorder),
+      ...lignes,
+    ]),
+  );
+
+  Widget _ligneGroupe(String label, String detail, double val, Color color) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+    child: Row(children: [
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+        if (detail.isNotEmpty)
+          Text(detail, style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+      ])),
+      Text('${val >= 0 ? "+" : ""}${val.toStringAsFixed(2)} €',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
+              color: val == 0 ? AppTheme.textTertiary : color)),
+    ]),
+  );
 
   Widget _ligne(String label, String detail, String valeur,
       bool isBold, {Color? color}) {

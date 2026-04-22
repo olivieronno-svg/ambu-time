@@ -204,8 +204,8 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
             ),
             alignment: BarChartAlignment.spaceAround,
             maxY: _afficherSalaire
-                ? donnees.map((d) => d.brut).reduce((a, b) => a > b ? a : b) * 1.2
-                : donnees.map((d) => d.heures).reduce((a, b) => a > b ? a : b) * 1.2,
+                ? (donnees.fold(0.0, (m, d) => d.brut > m ? d.brut : m)).clamp(1.0, double.infinity) * 1.2
+                : (donnees.fold(0.0, (m, d) => d.heures > m ? d.heures : m)).clamp(1.0, double.infinity) * 1.2,
             barGroups: donnees.asMap().entries.map((e) {
               final val = _afficherSalaire ? e.value.brut : e.value.heures;
               return BarChartGroupData(x: e.key, barRods: [

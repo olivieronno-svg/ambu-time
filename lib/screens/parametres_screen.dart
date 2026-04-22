@@ -1,11 +1,14 @@
 
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import '../utils/excel_service.dart';
+import '../utils/pdf_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../app_theme.dart';
 import '../models/garde.dart';
 import '../models/prime.dart';
 import '../utils/calculs.dart';
-import '../utils/pdf_service.dart';
 import '../utils/purchase_service.dart';
 import '../utils/storage.dart';
 import '../main.dart';
@@ -134,51 +137,99 @@ class _ParametresScreenState extends State<ParametresScreen> {
         const SnackBar(content: Text('Paramètres sauvegardés !')));
   }
 
-  Future<void> _importerDonnees() async {
-    // Demande confirmation
+  Future<void> _exporterFormat(String format) async {
+    // Sélecteur de période
+    final now = DateTime.now();
+    int moisSel = now.month;
+    int anneeSel = now.year;
+
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Importer une sauvegarde'),
-        content: const Text(
-            'Collez le contenu de votre fichier JSON de sauvegarde.\n\n'
-            'Attention : cela remplacera toutes vos données actuelles.'),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSt) => AlertDialog(
+        title: Text('Exporter en $format'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Choisissez la période :'),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(child: DropdownButton<int>(
+              value: moisSel,
+              isExpanded: true,
+              items: List.generate(12, (i) => DropdownMenuItem(
+                value: i + 1,
+                child: Text(['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'][i]),
+              )),
+              onChanged: (v) => setSt(() => moisSel = v!),
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: DropdownButton<int>(
+              value: anneeSel,
+              isExpanded: true,
+              items: [now.year - 1, now.year, now.year + 1].map((y) =>
+                  DropdownMenuItem(value: y, child: Text('$y'))).toList(),
+              onChanged: (v) => setSt(() => anneeSel = v!),
+            )),
+          ]),
+        ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continuer')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Exporter')),
         ],
-      ),
-    );
-    if (ok != true) return;
-
-    // Zone de texte pour coller le JSON
-    final ctrl = TextEditingController();
-    final json = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Coller le JSON'),
-        content: SizedBox(
-          height: 200,
-          child: TextField(
-            controller: ctrl,
-            maxLines: 10,
-            decoration: const InputDecoration(
-              hintText: 'Collez ici le contenu du fichier .json...',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: const Text('Importer'),
-          ),
-        ],
-      ),
+      )),
     );
 
-    if (json == null || json.trim().isEmpty) return;
+    if (ok != true || !mounted) return;
+
+    try {
+      if (format == 'PDF') {
+        await PdfService.exporterMois(
+          gardes: widget.gardes,
+          annee: anneeSel,
+          mois: moisSel,
+          tauxHoraire: widget.tauxHoraire,
+          panierRepas: widget.panierRepas,
+          indemnitesDimanche: widget.indemnitesDimanche,
+          montantIdaj: widget.montantIdaj,
+          primes: widget.primes,
+          impotSource: widget.impotSource,
+        );
+      } else if (format == 'Excel') {
+        await ExcelService.exporterMois(
+          gardes: widget.gardes,
+          annee: anneeSel,
+          mois: moisSel,
+          tauxHoraire: widget.tauxHoraire,
+          panierRepas: widget.panierRepas,
+          indemnitesDimanche: widget.indemnitesDimanche,
+          montantIdaj: widget.montantIdaj,
+          primes: widget.primes,
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur export : $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  Future<void> _importerDonnees() async {
+    // Sélection du fichier (JSON, PDF, Excel, Word, etc.)
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json', 'txt'],
+      dialogTitle: 'Choisir le fichier de sauvegarde',
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    String? json;
+    if (file.bytes != null) {
+      json = String.fromCharCodes(file.bytes!);
+    } else if (file.path != null) {
+      json = await File(file.path!).readAsString();
+    }
+    if (json == null || json.trim().isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fichier vide ou illisible'), backgroundColor: Colors.red));
+      return;
+    }
 
     final resultat = await Storage.importerDonnees(json);
     if (mounted) {
@@ -604,32 +655,57 @@ class _ParametresScreenState extends State<ParametresScreen> {
                   )),
                 ]),
                 const SizedBox(height: 12),
+                // Sauvegarde JSON
                 SizedBox(width: double.infinity, child: ElevatedButton.icon(
                   onPressed: () async {
-                    try {
-                      await Storage.exporterDonnees(widget.gardes);
-                    } catch (e) {
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red));
-                    }
+                    try { await Storage.exporterDonnees(widget.gardes); }
+                    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red)); }
                   },
-                  icon: const Icon(Icons.upload_outlined, size: 16),
-                  label: const Text('Exporter mes données (.json)'),
+                  icon: const Icon(Icons.backup_outlined, size: 16),
+                  label: const Text('Sauvegarder (WhatsApp, Drive, Email...)'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.blueAccent,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 )),
                 const SizedBox(height: 8),
+                Row(children: [
+                  // Export PDF
+                  Expanded(child: ElevatedButton.icon(
+                    onPressed: () => _exporterFormat('PDF'),
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 15),
+                    label: const Text('Export PDF'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  )),
+                  const SizedBox(width: 8),
+                  // Export Excel
+                  Expanded(child: ElevatedButton.icon(
+                    onPressed: () => _exporterFormat('Excel'),
+                    icon: const Icon(Icons.table_chart_outlined, size: 15),
+                    label: const Text('Export Excel'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  )),
+                ]),
+                const SizedBox(height: 8),
+                // Import sauvegarde
                 SizedBox(width: double.infinity, child: OutlinedButton.icon(
                   onPressed: _importerDonnees,
-                  icon: const Icon(Icons.download_outlined, size: 16),
-                  label: const Text('Importer une sauvegarde (.json)'),
+                  icon: const Icon(Icons.folder_open_outlined, size: 16),
+                  label: const Text('Restaurer une sauvegarde'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.blueAccent,
                     side: BorderSide(color: AppTheme.blueAccent.withOpacity(0.5)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 )),
               ]),

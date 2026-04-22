@@ -17,8 +17,8 @@ class PrimeMensuelle {
   };
 
   factory PrimeMensuelle.fromMap(Map<String, dynamic> m) => PrimeMensuelle(
-    id: m['id'] as String,
-    nom: m['nom'] as String,
-    montant: (m['montant'] as num).toDouble(),
+    id: m['id'] as String? ?? '',
+    nom: m['nom'] as String? ?? '',
+    montant: (m['montant'] as num?)?.toDouble() ?? 0.0,
   );
 }

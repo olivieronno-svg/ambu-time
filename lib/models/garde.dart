@@ -19,6 +19,7 @@ class Garde {
   final bool isCongesPaies;
   final DateTime? cpDateFin;
   final int nbJoursCP;
+  final double primeLongueDistance;
 
   Garde({
     required this.id,
@@ -38,6 +39,7 @@ class Garde {
     this.isCongesPaies = false,
     this.cpDateFin,
     this.nbJoursCP = 1,
+    this.primeLongueDistance = 0,
   });
 
   int get dureeMinutesBrut => jourNonTravaille ? 0 : heureFin.difference(heureDebut).inMinutes;
@@ -83,6 +85,7 @@ class Garde {
         .contains('${date.year}-${date.month}-${date.day}');
   }
 
+  /// Vrai uniquement pour les jours fériés légaux (pas les dimanches ordinaires)
   bool get isJourFerieSeulement {
     return joursFeries(date.year)
         .contains('${date.year}-${date.month}-${date.day}');
@@ -93,30 +96,39 @@ class Garde {
     if (date.weekday == DateTime.sunday) return 'Dimanche';
     final p = _paques(date.year);
     final m = date.month; final j = date.day;
-    if (m == 1 && j == 1) return "Jour de l'An";
-    if (m == 5 && j == 1) return 'Fete du Travail';
+    if (m == 1 && j == 1) return 'Jour de l\'An';
+    if (m == 5 && j == 1) return 'Fête du Travail';
     if (m == 5 && j == 8) return 'Victoire 1945';
-    if (m == 7 && j == 14) return 'Fete Nationale';
+    if (m == 7 && j == 14) return 'Fête Nationale';
     if (m == 8 && j == 15) return 'Assomption';
     if (m == 11 && j == 1) return 'Toussaint';
     if (m == 11 && j == 11) return 'Armistice';
-    if (m == 12 && j == 25) return 'Noel';
+    if (m == 12 && j == 25) return 'Noël';
     final lp = p.add(const Duration(days: 1));
-    if (date.year == lp.year && m == lp.month && j == lp.day) return 'Lundi de Paques';
+    if (date.year == lp.year && m == lp.month && j == lp.day) return 'Lundi de Pâques';
     final asc = p.add(const Duration(days: 39));
     if (date.year == asc.year && m == asc.month && j == asc.day) return 'Ascension';
     final pent = p.add(const Duration(days: 50));
-    if (date.year == pent.year && m == pent.month && j == pent.day) return 'Lundi de Pentecote';
+    if (date.year == pent.year && m == pent.month && j == pent.day) return 'Lundi de Pentecôte';
     return null;
   }
 
   int get heuresNuitMinutes {
     if (jourNonTravaille) return 0;
     int total = 0;
-    DateTime current = heureDebut;
-    while (current.isBefore(heureFin)) {
-      if (current.hour >= 21 || current.hour < 6) total++;
-      current = current.add(const Duration(minutes: 1));
+    // Itère par jour calendaire (O(jours) au lieu de O(minutes))
+    DateTime day = DateTime(heureDebut.year, heureDebut.month, heureDebut.day);
+    final lastDay = DateTime(heureFin.year, heureFin.month, heureFin.day);
+    while (!day.isAfter(lastDay)) {
+      for (final interval in [
+        [day, day.add(const Duration(hours: 6))],               // 00h–06h
+        [day.add(const Duration(hours: 21)), day.add(const Duration(hours: 24))], // 21h–24h
+      ]) {
+        final s = heureDebut.isAfter(interval[0]) ? heureDebut : interval[0];
+        final e = heureFin.isBefore(interval[1]) ? heureFin : interval[1];
+        if (e.isAfter(s)) total += e.difference(s).inMinutes;
+      }
+      day = day.add(const Duration(days: 1));
     }
     return total.clamp(0, dureeMinutes);
   }
@@ -139,6 +151,7 @@ class Garde {
     'isCongesPaies': isCongesPaies,
     'cpDateFin': cpDateFin?.toIso8601String(),
     'nbJoursCP': nbJoursCP,
+    'primeLongueDistance': primeLongueDistance,
   };
 
   factory Garde.fromMap(Map<String, dynamic> map) {
@@ -163,6 +176,7 @@ class Garde {
       isCongesPaies: map['isCongesPaies'] ?? false,
       cpDateFin: map['cpDateFin'] != null ? DateTime.parse(map['cpDateFin']) : null,
       nbJoursCP: map['nbJoursCP'] ?? 1,
+      primeLongueDistance: (map['primeLongueDistance'] ?? 0).toDouble(),
     );
   }
 }

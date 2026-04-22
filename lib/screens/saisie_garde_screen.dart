@@ -51,33 +51,71 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
   int _pauseMinutes = 0;
   bool _avecPanier = false;
   late double _panierRepasGarde;
+  bool _avecLongueDistance = false;
+  double _primeLongueDistance = 0;
   late TextEditingController _debutHeureCtrl;
   late TextEditingController _debutMinCtrl;
   late TextEditingController _finHeureCtrl;
   late TextEditingController _finMinCtrl;
   late TextEditingController _collegueCtrl;
   late TextEditingController _vehiculeCtrl;
+  late TextEditingController _longuePrimeCtrl;
   List<Achat> _achats = [];
 
   // ── Reconnaissance vocale ──────────────────────────────────────────
-  // UNE session par appui (comme WhatsApp/Siri) — fiable, sans boucle
+  // ── ASSISTANT VOCAL CONVERSATIONNEL ─────────────────────────────
+  // Machine à états : guide l'utilisateur question par question
   final SpeechToText _speech = SpeechToText();
   final FlutterTts _tts = FlutterTts();
   bool _speechAvailable = false;
   bool _ecoute = false;
   bool _ttsActif = false;
+  bool _ecouteRelancee = false; // évite double relance
   String _texteVocal = '';
+  String _etatConv = ''; // état courant de la conversation
+  String _articleEnAttente = ''; // article dont on attend le prix
 
   Future<void> _initSpeech() async {
+    // Configuration TTS — sélection automatique de la meilleure voix
     await _tts.setLanguage('fr-FR');
-    await _tts.setSpeechRate(0.9);
+    await _tts.setSpeechRate(0.50);
+    await _tts.setPitch(1.0);
     await _tts.setVolume(1.0);
+    // Important: évite la coupure sur les points intermédiaires
+    try { await _tts.setSharedInstance(true); } catch (_) {}
+    // Cherche automatiquement la meilleure voix Google française
+    try {
+      final voices = await _tts.getVoices as List?;
+      if (voices != null) {
+        // Priorité : Google WaveNet > Google Standard > autres
+        Map? best;
+        for (final v in voices) {
+          final name = ((v['name'] ?? '') as String).toLowerCase();
+          final locale = ((v['locale'] ?? '') as String).toLowerCase();
+          if (!locale.contains('fr')) continue;
+          if (name.contains('wavenet')) { best = v as Map; break; }
+          if (name.contains('google') && best == null) best = v as Map;
+          if (best == null) best = v as Map;
+        }
+        if (best != null) {
+          await _tts.setVoice({
+            'name': best['name'] as String,
+            'locale': best['locale'] as String,
+          });
+        }
+      }
+    } catch (_) {}
     _tts.setCompletionHandler(() {
-      if (mounted) setState(() => _ttsActif = false);
+      if (mounted) {
+        setState(() => _ttsActif = false);
+        if (_etatConv.isNotEmpty) {
+          _ecouteRelancee = true; // empêche le timer de relancer
+          Future.delayed(const Duration(milliseconds: 600), _ecouterReponse);
+        }
+      }
     });
     _speechAvailable = await _speech.initialize(
       onStatus: (status) {
-        // On ne fait RIEN ici — l'analyse se fait uniquement dans finalResult
         if ((status == 'done' || status == 'notListening') && mounted) {
           setState(() => _ecoute = false);
         }
@@ -88,62 +126,29 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     );
   }
 
-  Future<void> _demarrerEcoute() async {
-    if (_ecoute) { _arreterEcoute(); return; }
-    if (!_speechAvailable) await _initSpeech();
-    if (!_speechAvailable) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Micro non disponible sur cet appareil')));
-      return;
-    }
-    setState(() { _ecoute = true; _texteVocal = ''; });
-    await _speech.listen(
-      localeId: 'fr_FR',
-      onResult: (result) {
-        if (!mounted) return;
-        setState(() => _texteVocal = result.recognizedWords);
-        if (result.finalResult && result.recognizedWords.isNotEmpty) {
-          final texte = result.recognizedWords.trim();
-          setState(() { _ecoute = false; _texteVocal = ''; });
-          final tLow = texte.toLowerCase()
-              .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a');
-          if (tLow.contains('sauvegarde') || tLow.contains('enregistre') ||
-              tLow.contains('valide') || tLow.contains('c est bon') ||
-              tLow.contains('fini') || tLow.contains('termine')) {
-            _speech.stop();
-            final sans = tLow
-                .replaceAll('sauvegarde','').replaceAll('enregistre','')
-                .replaceAll('valide','').replaceAll('c est bon','')
-                .replaceAll('fini','').replaceAll('termine','').trim();
-            if (sans.isNotEmpty) _analyserVoix(sans);
-            Future.delayed(const Duration(milliseconds: 200), _sauvegarderGarde);
-          } else {
-            _analyserVoix(texte);
-          }
-        }
-      },
-      listenFor: const Duration(seconds: 120),
-      pauseFor: const Duration(seconds: 5),
-      partialResults: true,
-      cancelOnError: true,
-      listenMode: ListenMode.dictation,
-    );
-  }
-
+  // ── Parle et attend la fin avant de réécouter ─────────────────
   Future<void> _parler(String texte) async {
     if (!mounted) return;
-    setState(() => _ttsActif = true);
+    await _speech.stop();
+    setState(() { _ttsActif = true; _ecoute = false; });
+    await _tts.stop();
     await _tts.speak(texte);
+    // Timer de secours si completionHandler ne se déclenche pas (8s)
+    if (_etatConv.isNotEmpty) {
+      final etatTimer = _etatConv;
+      Future.delayed(const Duration(seconds: 8), () {
+        if (mounted && _etatConv == etatTimer && !_ecoute && _ttsActif) {
+          setState(() => _ttsActif = false);
+          _ecouterReponse();
+        }
+      });
+    }
   }
 
-  // Demande vocalement le prix manquant, puis réécoute
-  Future<void> _demanderPrix(String nomArticle) async {
-    await _speech.stop();
-    setState(() => _ecoute = false);
-    await _parler('Quel est le prix de $nomArticle ?');
-    // Attend la fin de la parole puis réécoute
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
+  // ── Lance l'écoute pour capter la réponse ─────────────────────
+  Future<void> _ecouterReponse() async {
+    if (!mounted || _etatConv.isEmpty) return;
+    if (!_speechAvailable) await _initSpeech();
     setState(() { _ecoute = true; _texteVocal = ''; });
     await _speech.listen(
       localeId: 'fr_FR',
@@ -153,53 +158,970 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         if (result.finalResult && result.recognizedWords.isNotEmpty) {
           final rep = result.recognizedWords.trim();
           setState(() { _ecoute = false; _texteVocal = ''; });
-          // Parse le prix depuis la réponse
-          String repNorm = rep.toLowerCase()
-              .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a');
-          repNorm = repNorm.replaceAllMapped(
-              RegExp(r'(\d+)\s+euros?\s+(\d{1,2})'),
-              (m) => '${m.group(1)}.${m.group(2)!.padLeft(2,'0')}');
-          repNorm = repNorm.replaceAll(RegExp(r'euros?'), '');
-          repNorm = repNorm.replaceAllMapped(
-              RegExp(r'(\d{1,3})\s*(?:centimes?|cts?)'),
-              (m) { final v = (int.tryParse(m.group(1) ?? '0') ?? 0) / 100; return v.toStringAsFixed(2); });
-          repNorm = repNorm.replaceAllMapped(RegExp(r'(\d),(\d)'), (m) => '\${m.group(1)}.\${m.group(2)}');
-          final mPrix = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(repNorm);
-          if (mPrix != null) {
-            final montant = double.tryParse(mPrix.group(1) ?? '0') ?? 0;
-            if (montant > 0) {
-              _achats.add(Achat(
-                id: DateTime.now().microsecondsSinceEpoch.toString(),
-                intitule: _capitaliser(nomArticle),
-                montant: montant,
-              ));
-              setState(() {});
-              _parler('$nomArticle ajouté pour ${montant.toStringAsFixed(2)} euros');
-              _feedback('✓ ${_capitaliser(nomArticle)} ${montant.toStringAsFixed(2)}€ ajouté');
-              return;
-            }
-          }
-          _parler('Prix non compris, veuillez réessayer');
-          _feedback('❌ Prix non reconnu');
+          _traiterReponse(rep);
         }
       },
-      listenFor: const Duration(seconds: 15),
+      listenFor: const Duration(seconds: 20),
       pauseFor: const Duration(seconds: 4),
       partialResults: true,
-      cancelOnError: true,
+      cancelOnError: false,
       listenMode: ListenMode.dictation,
     );
   }
 
-  void _arreterEcoute() {
-    _speech.stop();
-    if (_texteVocal.isNotEmpty) {
-      final t = _texteVocal;
-      setState(() { _ecoute = false; _texteVocal = ''; });
-      _analyserVoix(t);
-    } else {
-      if (mounted) setState(() { _ecoute = false; _texteVocal = ''; });
+  // ── Démarre la conversation ────────────────────────────────────
+  Future<void> _demarrerEcoute() async {
+    if (_ecoute || _ttsActif) {
+      // Stop mais garde l'état de la conversation
+      await _tts.stop();
+      await _speech.stop();
+      setState(() { _ecoute = false; _ttsActif = false; _texteVocal = ''; });
+      return;
     }
+    // Si conversation déjà en cours — reprend et répète la question
+    if (_etatConv.isNotEmpty) {
+      final questions = {
+        'date': 'Quelle garde dois-je inscrire ?',
+        'heures': 'Quels sont les horaires ?',
+        'pause': 'Avez-vous fait une coupure ?',
+        'duree_pause': 'Combien de minutes de coupure ?',
+        'achats': 'Quels ont ete vos achats divers ?',
+        'autres_achats': 'Avez-vous d\'autres achats ?',
+        'demande_achats': 'Avez-vous effectué des achats ?',
+        'fin_achats': 'Est-ce tout ?',
+        'longue_distance': 'Avez-vous eu une prime longue distance ?',
+        'montant_longue_distance': 'Quel est le montant de la prime longue distance ?',
+        'confirmer': 'Dois-je sauvegarder cette garde ?',
+        'confirmer_doublon': 'Voulez-vous quand meme enregistrer ?',
+        'conge_debut': 'Quel est le premier jour ?',
+        'conge_fin': 'Quel est le dernier jour ?',
+      };
+      final q = questions[_etatConv];
+      if (q != null) {
+        await _parler(q);
+      } else {
+        await _ecouterReponse();
+      }
+      return;
+    }
+    if (!_speechAvailable) await _initSpeech();
+    if (!_speechAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Micro non disponible')));
+      return;
+    }
+    _etatConv = 'date';
+    final h = DateTime.now().hour;
+    final salut = h >= 18 ? 'Bonsoir' : 'Bonjour';
+    await _parler('$salut ! Quelle garde dois-je inscrire ?');
+  }
+
+  Future<void> _traiterReponse(String rep) async {
+    final t = rep.toLowerCase()
+        .replaceAll('é','e').replaceAll('è','e').replaceAll('ê','e')
+        .replaceAll('à','a').replaceAll('â','a').replaceAll('ç','c')
+        .replaceAll("'", " ");
+
+    // Sauvegarde globale — à tout moment
+    final tSav = t.replaceAll(' ', '');
+    if (t.contains('sauvegarde') || t.contains('enregistre') ||
+        t.contains('sauvegarder') || t.contains('enregistrer') ||
+        t.contains('c est bon') || t.contains('valide') ||
+        tSav.contains('sauvegarde') || tSav.contains('enregistre')) {
+      setState(() => _etatConv = '');
+      if (_checkCPChevauchement()) return;
+      _enregistrerGarde();
+      await _parler('Parfait, garde enregistree !');
+      Future.delayed(const Duration(milliseconds: 2000), () {
+        if (mounted) _reinitialiserFormulaire();
+      });
+      return;
+    }
+
+    // Stop / réinitialise global — fonctionne toujours
+    if (t == 'reinitialise' || t == 'reinitialiser' || t == 'efface' || t == 'efface tout' ||
+        t.contains('reinitialise') || t.contains('efface tout') || t.contains('recommence tout') ||
+        t.contains('tout effacer') || t.contains('tout reinitialiser') ||
+        (t.contains('annule') && (t.contains('tout') || t.length < 10))) {
+      _reinitialiserFormulaire();
+      await _parler('Formulaire réinitialisé.');
+      return;
+    }
+
+    // Retour en arrière / correction
+    final estCorrection = t.contains('trompe') || t.contains('tort') || t.contains('erreur') || t.contains('faux') ||
+        t.contains('retour') || t.contains('recommence') ||
+        t.contains('modifier') || t.contains('changer') ||
+        t.contains('pas ca') || t.contains('pas correct') || t.contains('pas bon') ||
+        (t.contains('non') && (t.contains('ca') || t.contains('pas') || t.contains('correct')));
+
+    if (estCorrection) {
+      // Message d'excuse et reprise
+      final questionsReprise = {
+        'date': 'Pour quelle date était cette garde ?',
+        'heures': 'Quels sont les horaires de votre garde ?',
+        'pause': 'Avez-vous fait une coupure durant cette garde ?',
+        'duree_pause': 'Quelle était la durée de la coupure ?',
+        'achats': 'Quels ont été vos achats divers ?',
+        'autres_achats': 'Avez-vous d\'autres achats ?',
+        'confirmer': 'Souhaitez-vous confirmer l\'enregistrement de cette garde ?',
+      };
+      final questionActuelle = questionsReprise[_etatConv] ?? 'Pouvez-vous répéter ?';
+      // Détecte si la phrase contient des heures (Xh à Yh / de X à Y)
+      String tCorr = t.replaceAll('heures','h').replaceAll('heure','h')
+          .replaceAll('à','a').replaceAll('de ','');
+      tCorr = tCorr.replaceAllMapped(RegExp(r'(\d{1,2})\s+h'), (m) => '${m.group(1)}h');
+      final hCorr = <List<int>>[];
+      for (final m in RegExp(r'(\d{1,2})h(\d{2})?').allMatches(tCorr)) {
+        final h = int.tryParse(m.group(1) ?? '') ?? -1;
+        final mn = int.tryParse(m.group(2) ?? '0') ?? 0;
+        if (h >= 0 && h <= 23) hCorr.add([h, mn]);
+      }
+
+      // Détecte si la phrase contient une date explicite
+      final contientDateExplicite = t.contains('aujourd') || t.contains('hier') ||
+          t.contains('demain') || t.contains('avant hier') ||
+          ['janvier','fevrier','mars','avril','mai','juin','juillet',
+           'aout','septembre','octobre','novembre','decembre'].any((m) => t.contains(m)) ||
+          RegExp(r'\ble\s+\d{1,2}\b').hasMatch(t);
+
+      if (hCorr.length >= 2) {
+        // Correction d'heures de garde (début + fin)
+        setState(() {
+          _debutHeureCtrl.text = hCorr[0][0].toString().padLeft(2,'0');
+          _debutMinCtrl.text   = hCorr[0][1].toString().padLeft(2,'0');
+          _finHeureCtrl.text   = hCorr[1][0].toString().padLeft(2,'0');
+          _finMinCtrl.text     = hCorr[1][1].toString().padLeft(2,'0');
+        });
+        final dStr = hCorr[0][1] > 0 ? '${hCorr[0][0]} heures ${hCorr[0][1]}' : '${hCorr[0][0]} heures';
+        final fStr = hCorr[1][1] > 0 ? '${hCorr[1][0]} heures ${hCorr[1][1]}' : '${hCorr[1][0]} heures';
+        _etatConv = 'pause';
+        await _parler('Pas de problème, j\'ai corrigé : de $dStr à $fStr. Avez-vous fait une coupure ?');
+      } else if (hCorr.length == 1 && hCorr[0][0] >= 4 && !t.contains('coupure') && !t.contains('pause')) {
+        // 1 heure valide (ex: 13h10) → corrige l'heure de fin
+        final hF = hCorr[0][0];
+        final mF = hCorr[0][1];
+        setState(() {
+          _finHeureCtrl.text = hF.toString().padLeft(2,'0');
+          _finMinCtrl.text   = mF.toString().padLeft(2,'0');
+        });
+        final fStr = mF > 0 ? '$hF heures $mF' : '$hF heures';
+        _etatConv = 'pause';
+        await _parler('Pas de problème, heure de fin corrigée à $fStr. Avez-vous fait une coupure ?');
+      } else if (t.contains('coupure') || t.contains('pause') || t.contains('min') ||
+                 (hCorr.length == 1 && hCorr.isNotEmpty && hCorr[0][0] < 4)) {
+        // Correction d'une durée de coupure (petite valeur = minutes/heures de pause)
+        final mins = _parseMinutes(t);
+        if (mins > 0) {
+          setState(() { _avecPause = true; _pauseMinutes = mins; });
+          final pauseStr = mins >= 60
+              ? '${mins ~/ 60} heure${mins ~/ 60 > 1 ? "s" : ""}${mins % 60 > 0 ? " et ${mins % 60} minutes" : ""}'
+              : '$mins minutes';
+          _etatConv = 'achats';
+          await _parler('Pas de problème, coupure de $pauseStr. Quels ont été vos achats divers ?');
+        } else {
+          // Pas de durée trouvée → retour à l'étape précédente
+          final etatsOrdre2 = ['date','heures','pause','duree_pause','achats','autres_achats','fin_achats','confirmer'];
+          final idx2 = etatsOrdre2.indexOf(_etatConv);
+          if (idx2 > 0) { _etatConv = etatsOrdre2[idx2 - 1]; }
+          await _parler('Désolé, nous allons reprendre.');
+        }
+      } else if (contientDateExplicite) {
+        // Correction de date
+        _analyserVoix(rep);
+        final moisN = ['','janvier','fevrier','mars','avril','mai','juin',
+            'juillet','aout','septembre','octobre','novembre','decembre'];
+        final jour = _date.day == 1 ? 'premier' : '${_date.day}';
+        final mois = moisN[_date.month];
+        _etatConv = 'heures';
+        await _parler('Pas de problème, j\'ai noté le $jour $mois. Quels sont les horaires ?');
+      } else {
+        // Retour à l'étape précédente — repose la bonne question
+        // Flux CP/non-travaillé a son propre ordre de retour
+        final etatsOrdreCP = {'conge_fin': 'conge_debut', 'conge_debut': 'date'};
+        if (etatsOrdreCP.containsKey(_etatConv)) {
+          final etatPrec = etatsOrdreCP[_etatConv]!;
+          _etatConv = etatPrec;
+          final qCP = etatPrec == 'date' ? 'Quelle garde dois-je inscrire ?' :
+                      etatPrec == 'conge_debut' ? 'Quel est le premier jour ?' : '';
+          await _parler('Désolé, nous allons reprendre. $qCP');
+          return;
+        }
+        final etatsOrdre = ['date','heures','pause','duree_pause','demande_achats','achats','autres_achats','fin_achats','longue_distance','montant_longue_distance','confirmer'];
+        final questions = {
+          'date': 'Quelle garde dois-je inscrire ?',
+          'heures': 'Quels sont les horaires ?',
+          'pause': 'Avez-vous fait une coupure ?',
+          'duree_pause': 'Combien de minutes de coupure ?',
+          'achats': 'Quels ont été vos achats divers ?',
+          'autres_achats': 'Avez-vous d\'autres achats ?',
+          'fin_achats': 'Est-ce tout ?',
+          'confirmer': 'Dois-je sauvegarder cette garde ?',
+          'conge_debut': 'Quelle est la date de début ?',
+          'conge_fin': 'Quelle est la date de fin du congé ?',
+        };
+        final idxActuel = etatsOrdre.indexOf(_etatConv);
+        if (idxActuel > 0) {
+          _etatConv = etatsOrdre[idxActuel - 1];
+          final question = questions[_etatConv] ?? 'Pouvez-vous répéter ?';
+          await _parler('Désolé, nous allons reprendre. $question');
+          // Sécurité : relance l'écoute si le completionHandler ne se déclenche pas
+          Future.delayed(const Duration(seconds: 5), () {
+            if (mounted && !_ecoute && !_ttsActif && _etatConv.isNotEmpty) _ecouterReponse();
+          });
+        } else {
+          _etatConv = 'date';
+          await _parler('Désolé, nous allons reprendre depuis le début. Quelle garde dois-je inscrire ?');
+        }
+      }
+      return;
+    }
+
+    // Véhicule — détectable à tout moment
+    if (t.contains('vehicule') || t.contains('voiture') || t.contains('ambulance') ||
+        t.contains('vsl') || t.contains('smur') ||
+        RegExp(r'\b(ford|renault|peugeot|citroen|toyota|mercedes|volkswagen|fiat|opel|'
+               r'scenic|kangoo|transit|master|sprinter|boxer|ducato|jumper|'
+               r'mercedes|308|301|320|321|partner|dokker|trafic|\d{3})\b').hasMatch(t)) {
+      _analyserVoix(rep);
+      final veh = _vehiculeCtrl.text;
+      if (veh.isNotEmpty) {
+        final questions = {
+          'achats': 'Quels ont ete vos achats divers ?',
+          'autres_achats': 'Avez-vous d\'autres achats ?',
+          'pause': 'Avez-vous fait une coupure ?',
+          'heures': 'Quels sont les horaires ?',
+          'fin_achats': 'Est-ce tout ?',
+          'confirmer': 'Dois-je sauvegarder cette garde ?',
+        };
+        final suite = questions[_etatConv] ?? '';
+        await _parler(suite.isNotEmpty ? 'Vehicule $veh. $suite' : 'Vehicule $veh.');
+        return;
+      }
+    }
+
+    // Collègue — détectable à tout moment
+    if (t.contains('avec') || t.contains('collegue') || t.contains('binome') ||
+        t.contains('equipier') || t.contains('jess') || t.contains('etais avec') ||
+        t.contains('travaille avec')) {
+      _analyserVoix(rep);
+      final col = _collegueCtrl.text;
+      if (col.isNotEmpty) {
+        final questions = {
+          'achats': 'Quels ont ete vos achats divers ?',
+          'autres_achats': 'Avez-vous d\'autres achats ?',
+          'pause': 'Avez-vous fait une coupure ?',
+          'heures': 'Quels sont les horaires ?',
+          'fin_achats': 'Est-ce tout ?',
+          'confirmer': 'Dois-je sauvegarder cette garde ?',
+        };
+        final suite = questions[_etatConv] ?? '';
+        await _parler(suite.isNotEmpty ? 'Colleague $col note. $suite' : 'Colleague $col note.');
+        return;
+      }
+    }
+
+    // Coupure/pause — détectable à tout moment
+    if (_etatConv != 'confirmer' && _etatConv != 'fin_achats' && _etatConv != 'confirmer_doublon' &&
+        (t.contains('pause') || t.contains('coupure') || t.contains('j ai une') || t.contains('j avais')) &&
+        (t.contains('min') || t.contains('heure') || RegExp(r'\d').hasMatch(t))) {
+      final mins = _parseMinutes(t);
+      if (mins > 0) {
+        setState(() { _avecPause = true; _pauseMinutes = mins; });
+        final pauseStr = mins >= 60
+            ? '${mins ~/ 60} heure${mins ~/ 60 > 1 ? "s" : ""}${mins % 60 > 0 ? " et ${mins % 60} minutes" : ""}'
+            : '$mins minutes';
+        // Reste dans l'état courant
+        final questions = {
+          'achats': 'Quels ont ete vos achats divers ?',
+          'autres_achats': 'Avez-vous d\'autres achats ?',
+          'fin_achats': 'Est-ce tout ?',
+          'confirmer': 'Dois-je sauvegarder cette garde ?',
+        };
+        final suite = questions[_etatConv] ?? '';
+        if (suite.isNotEmpty) {
+          await _parler('Coupure de $pauseStr notee. $suite');
+        } else {
+          await _parler('Coupure de $pauseStr notee.');
+        }
+        return;
+      }
+    }
+
+    // Suppression d'un achat pendant la conversation
+    if (t.contains('efface') || t.contains('retire') || t.contains('enleve') || t.contains('supprime')) {
+      // "efface moi" / "réinitialise moi" = reinit global
+      if ((t == 'efface moi' || t == 'efface' || t == 'reinitialise' || t == 'annule' ||
+           t.contains('reinitialise') || t.contains('efface tout') || t.contains('tout effacer')) &&
+          !t.contains('achat') && !t.contains('cafe') && !t.contains('sandwich') &&
+          !t.contains('essence') && !t.contains('conge')) {
+        _reinitialiserFormulaire();
+        await _parler('Formulaire réinitialisé.');
+        return;
+      }
+      // Détecte si c'est une demande d'effacement de CP/non-travaillé (pas d'achat)
+      if (t.contains('conge') || t.contains('cp') || t.contains('non travaille') ||
+          t.contains('ferie') || t.contains('jour non')) {
+        // Cherche et supprime les CP dans toutesGardes via le callback
+        final cpIds = widget.toutesGardes
+            .where((g) => g.isCongesPaies || g.jourNonTravaille)
+            .map((g) => g.id)
+            .toList();
+        if (cpIds.isNotEmpty && widget.onSupprimerGardeId != null) {
+          for (final id in cpIds) widget.onSupprimerGardeId!(id);
+          _reinitialiserFormulaire();
+          await _parler('Conges supprimes. Quelle garde dois-je inscrire ?');
+        } else {
+          setState(() {
+            _isCongesPaies = false;
+            _jourNonTravaille = false;
+            _cpDateFin = null;
+            _etatConv = 'date';
+          });
+          await _parler('Pas de conges enregistres. Quelle garde dois-je inscrire ?');
+        }
+        return;
+      }
+      final avant = _achats.length;
+
+      // Extrait le nom de l'article pour la réponse
+      String nomArticle = '';
+      final cmdRegex = RegExp(r'(?:efface[rz]?|retire[rz]?|enl[eè]ve[rz]?|supprime[rz]?)\s+(?:le|la|les|l|un|une|du|de la|des|moi le|moi la|moi l)?\s*([a-zA-Z\u00c0-\u024f]+)');
+      final mCmd = cmdRegex.firstMatch(t);
+      if (mCmd != null) nomArticle = mCmd.group(1) ?? '';
+
+      _analyserVoix(rep);
+
+      if (_achats.length < avant) {
+        // Réponses variées
+        final repOk = [
+          'Très bien, je vais faire ça.',
+          'Parfait, considéré comme fait.',
+          'C\'est fait.',
+          'Bien sûr, c\'est supprimé.',
+        ];
+        repOk.shuffle();
+        await _parler(repOk.first);
+      } else {
+        final repNok = [
+          'Je ne trouve pas cet article dans ma liste.',
+          'Cet article ne figure pas dans vos achats.',
+        ];
+        repNok.shuffle();
+        await _parler(repNok.first);
+      }
+      return;
+    }
+
+    switch (_etatConv) {
+
+      case 'date':
+        // Détection congé payé ou jour non travaillé
+        final tDate = rep.toLowerCase()
+            .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a')
+            .replaceAll("'", ' ');
+
+        // Si la phrase contient efface/retire ET cp → suppression de CP (pas création)
+        if ((tDate.contains('efface') || tDate.contains('retire') || tDate.contains('enleve') ||
+             tDate.contains('supprime') || tDate.contains('annule')) &&
+            (tDate.contains('cp') || tDate.contains('conge'))) {
+          final cpIds = widget.toutesGardes
+              .where((g) => g.isCongesPaies || g.jourNonTravaille)
+              .map((g) => g.id).toList();
+          if (cpIds.isNotEmpty && widget.onSupprimerGardeId != null) {
+            for (final id in cpIds) widget.onSupprimerGardeId!(id);
+            _reinitialiserFormulaire();
+            await _parler('Conges supprimes. Quelle garde dois-je inscrire ?');
+          } else {
+            await _parler('Pas de conges enregistres. Quelle garde dois-je inscrire ?');
+          }
+          break;
+        }
+
+        if (tDate.contains('conge') || tDate.contains('conges') || tDate.contains('cp') ||
+            tDate.contains('vacances')) {
+          setState(() { _isCongesPaies = true; _jourNonTravaille = false; });
+          // Détecte si une date de début est déjà dans la phrase
+          final dateDebutCP = _parseDate(rep);
+          final now2 = DateTime.now();
+          final dateDejaPresente = tDate.contains('aujourd') || tDate.contains('hier') ||
+              tDate.contains('lundi') || tDate.contains('mardi') || tDate.contains('mercredi') ||
+              tDate.contains('jeudi') || tDate.contains('vendredi') || tDate.contains('samedi') ||
+              tDate.contains('dimanche') || RegExp(r'\ble\s+\d').hasMatch(tDate) ||
+              ['janvier','fevrier','mars','avril','mai','juin','juillet',
+               'aout','septembre','octobre','novembre','decembre'].any((m) => tDate.contains(m));
+          if (dateDejaPresente) {
+            setState(() => _date = dateDebutCP);
+            final mN = ['','janvier','fevrier','mars','avril','mai','juin',
+                'juillet','aout','septembre','octobre','novembre','decembre'];
+            final j = dateDebutCP.day == 1 ? 'premier' : '${dateDebutCP.day}';
+            final mo = mN[dateDebutCP.month];
+            // Détecte durée dans la phrase ("pendant 6 jours", "6 jours")
+            final mDuree = RegExp(r'pendant\s+(\d+)\s*jours?|(\d+)\s*jours?').firstMatch(tDate);
+            if (mDuree != null) {
+              final nbJ = int.tryParse(mDuree.group(1) ?? mDuree.group(2) ?? '1') ?? 1;
+              final dateFin2 = dateDebutCP.add(Duration(days: nbJ - 1));
+              setState(() { _cpDateFin = dateFin2; });
+              final jF = dateFin2.day == 1 ? 'premier' : '${dateFin2.day}';
+              final moF = mN[dateFin2.month];
+              _etatConv = 'confirmer';
+              await _parler('Congés du $j $mo au $jF $moF, soit $nbJ jours. Dois-je sauvegarder ?');
+            } else {
+              _etatConv = 'conge_fin';
+              await _parler('Entendu, congés à partir du $j $mo. Quel est le dernier jour ?');
+            }
+          } else {
+            _etatConv = 'conge_debut';
+            await _parler('Entendu, congés payés. Quel est le premier jour ?');
+          }
+          break;
+        }
+        if (tDate.contains('non travaille') || tDate.contains('pas travaille') ||
+            tDate.contains('jour ferie') || tDate.contains('ferie') ||
+            tDate.contains('repos') || tDate.contains('absent')) {
+          setState(() { _jourNonTravaille = true; _isCongesPaies = false; });
+          _etatConv = 'conge_debut';
+          await _parler('Noté, jour non travaillé. Quelle est la date ?');
+          break;
+        }
+        final nowD = DateTime.now();
+        if (tDate.contains('avant-hier') || tDate.contains('avant hier') || tDate.contains('avanthier')) {
+          setState(() => _date = nowD.subtract(const Duration(days: 2)));
+        } else if (tDate.contains('hier')) {
+          setState(() => _date = nowD.subtract(const Duration(days: 1)));
+        } else if (tDate.contains('aujourd') || tDate.contains('maintenant')) {
+          setState(() => _date = nowD);
+        } else {
+          // Vérifie d'abord si un mois est mentionné (janvier, février, mars...)
+          const moisNoms2 = ['janvier','fevrier','mars','avril','mai','juin',
+              'juillet','aout','septembre','octobre','novembre','decembre'];
+          final contientMois = moisNoms2.any((m) => tDate.contains(m));
+          if (contientMois) {
+            // Utilise _parseDate qui gère correctement les noms de mois
+            final dateAvecMois = _parseDate(rep);
+            setState(() => _date = dateAvecMois);
+          } else {
+            // Chiffre seul → jour du mois courant ("le 10" ou juste "10")
+            final mJseul = RegExp(r'\b(\d{1,2})\b').firstMatch(tDate);
+            if (mJseul != null && !tDate.contains('h') && !tDate.contains('heure')) {
+              final j = int.tryParse(mJseul.group(1) ?? '') ?? nowD.day;
+              if (j >= 1 && j <= 31) {
+                setState(() => _date = DateTime(nowD.year, nowD.month, j));
+              } else {
+                _analyserVoix(rep);
+              }
+            } else {
+              _analyserVoix(rep); // parser complet pour les autres cas
+            }
+          }
+        }
+        // Détecte aussi les heures si elles sont dans la même phrase
+        String tHD = rep.toLowerCase().replaceAll('heures','h').replaceAll('heure','h')
+            .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a').replaceAll('â','a');
+        tHD = tHD.replaceAllMapped(RegExp(r'(\d{1,2})\s+h'), (m) => '${m.group(1)}h');
+        final heuresDate = <List<int>>[];
+        for (final mh in RegExp(r'(\d{1,2})h(\d{2})?').allMatches(tHD)) {
+          final h = int.tryParse(mh.group(1) ?? '') ?? -1;
+          final mn = int.tryParse(mh.group(2) ?? '0') ?? 0;
+          if (h >= 0 && h <= 23) heuresDate.add([h, mn]);
+        }
+        if (heuresDate.length < 2) {
+          // Fallback: cherche tous les nombres 0-23 dans le texte
+          final nums = RegExp(r'\b(\d{1,2})\b').allMatches(tHD)
+              .map((m) => int.tryParse(m.group(1) ?? '') ?? -1)
+              .where((n) => n >= 0 && n <= 23).toList();
+          if (heuresDate.isEmpty && nums.length >= 2) {
+            // Aucune heure trouvée — utilise les nombres bruts
+            heuresDate.add([nums[0], 0]);
+            heuresDate.add([nums[1], 0]);
+          } else if (heuresDate.length == 1 && nums.length >= 2) {
+            // Une heure trouvée — cherche la 2e parmi les nombres restants
+            final dejaH = heuresDate[0][0];
+            final autre = nums.firstWhere((n) => n != dejaH, orElse: () => -1);
+            if (autre >= 0) heuresDate.add([autre, 0]);
+          }
+        }
+        final now = DateTime.now();
+        final moisN = ['','janvier','fevrier','mars','avril','mai','juin',
+            'juillet','aout','septembre','octobre','novembre','decembre'];
+        final jour = _date.day == 1 ? 'premier' : '${_date.day}';
+        final mois = moisN[_date.month];
+        final conf = 'Très bien, pour le $jour $mois.';
+        if (heuresDate.length >= 2) {
+          setState(() {
+            _debutHeureCtrl.text = heuresDate[0][0].toString().padLeft(2,'0');
+            _debutMinCtrl.text   = heuresDate[0][1].toString().padLeft(2,'0');
+            _finHeureCtrl.text   = heuresDate[1][0].toString().padLeft(2,'0');
+            _finMinCtrl.text     = heuresDate[1][1].toString().padLeft(2,'0');
+          });
+          _etatConv = 'pause';
+          await _parler('$conf De ${heuresDate[0][0]} heures à ${heuresDate[1][0]} heures, avez-vous fait une coupure ?');
+        } else {
+          _etatConv = 'heures';
+          await _parler('$conf Quels sont les horaires ?');
+        }
+        break;
+
+      case 'heures':
+        // Parser dédié pour la conversation — plus robuste que _analyserVoix
+        String tH = rep.toLowerCase()
+            .replaceAll('heures', 'h').replaceAll('heure', 'h')
+            .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a');
+        // "8 h 20" → "8h20" puis sépare, "20 h" → "20h"
+        tH = tH.replaceAllMapped(RegExp(r'(\d{1,2})\s+h'), (m) => '${m.group(1)}h');
+        // Cherche tous les nombres (heures et minutes)
+        final allNums = RegExp(r'(\d{1,2})h?(\d{2})?').allMatches(tH).toList();
+        final heures = <List<int>>[];
+        for (final m in RegExp(r'(\d{1,2})h(\d{2})?').allMatches(tH)) {
+          final h = int.tryParse(m.group(1) ?? '') ?? -1;
+          final mn = int.tryParse(m.group(2) ?? '0') ?? 0;
+          if (h >= 0 && h <= 23) heures.add([h, mn]);
+        }
+        // Si moins de 2 heures trouvées, cherche 2 nombres distincts
+        if (heures.length < 2) {
+          final nums = RegExp(r'\b(\d{1,2})\b').allMatches(tH)
+              .map((m) => int.tryParse(m.group(1) ?? '') ?? -1)
+              .where((n) => n >= 0 && n <= 23).toList();
+          if (heures.isEmpty && nums.length >= 2) {
+            heures.add([nums[0], 0]);
+            heures.add([nums[1], 0]);
+          } else if (heures.length == 1 && nums.length >= 2) {
+            final dejaH = heures[0][0];
+            final autre = nums.firstWhere((n) => n != dejaH, orElse: () => -1);
+            if (autre >= 0) heures.add([autre, 0]);
+          }
+        }
+        if (heures.length >= 2) {
+          setState(() {
+            _debutHeureCtrl.text = heures[0][0].toString().padLeft(2,'0');
+            _debutMinCtrl.text   = heures[0][1].toString().padLeft(2,'0');
+            _finHeureCtrl.text   = heures[1][0].toString().padLeft(2,'0');
+            _finMinCtrl.text     = heures[1][1].toString().padLeft(2,'0');
+          });
+        } else if (heures.length == 1) {
+          setState(() {
+            _debutHeureCtrl.text = heures[0][0].toString().padLeft(2,'0');
+            _debutMinCtrl.text   = heures[0][1].toString().padLeft(2,'0');
+          });
+        }
+        final dhI = int.tryParse(_debutHeureCtrl.text) ?? 0;
+        final dmI = int.tryParse(_debutMinCtrl.text) ?? 0;
+        final fhI = int.tryParse(_finHeureCtrl.text) ?? 0;
+        final fmI = int.tryParse(_finMinCtrl.text) ?? 0;
+        final dStr = dmI > 0 ? '$dhI heures $dmI' : '$dhI heures';
+        final fStr = fmI > 0 ? '$fhI heures $fmI' : '$fhI heures';
+        _etatConv = 'pause';
+        // Phrase courte pour éviter la coupure TTS
+        await _parler('De $dStr à $fStr, avez-vous fait une coupure ?');
+        break;
+
+      case 'pause':
+        if (t.contains('non') || t.contains('pas') || t.contains('aucune')) {
+          setState(() { _avecPause = false; _pauseMinutes = 0; });
+          _etatConv = 'demande_achats';
+          await _parler('Pas de coupure. Avez-vous effectué des achats ?');
+        } else if (RegExp(r'\d').hasMatch(t) || t.contains('heure') || t.contains('minute') || t.contains('min') || t.contains('une h')) {
+          // Contient une durée → parse directement
+          final mins = _parseMinutes(t);
+          if (mins > 0) {
+            setState(() { _avecPause = true; _pauseMinutes = mins; });
+            _etatConv = 'demande_achats';
+            final pauseStr = mins >= 60 ? '${mins ~/ 60} heure${mins ~/ 60 > 1 ? "s" : ""}${mins % 60 > 0 ? " et ${mins % 60} minutes" : ""}' : '$mins minutes';
+            await _parler('Coupure de $pauseStr. Avez-vous effectué des achats ?');
+          } else {
+            // Nombre non reconnu → demande
+            setState(() => _avecPause = true);
+            _etatConv = 'duree_pause';
+            await _parler('Combien de minutes de coupure ?');
+          }
+        } else if (t.contains('oui')) {
+          setState(() => _avecPause = true);
+          _etatConv = 'duree_pause';
+          await _parler('Combien de minutes de coupure ?');
+        } else {
+          await _parler('Avez-vous fait une coupure ? Répondez oui ou non.');
+        }
+        break;
+
+      case 'duree_pause':
+        final mins = _parseMinutes(t);
+        if (mins > 0) {
+          setState(() { _pauseMinutes = mins; });
+          _etatConv = 'demande_achats';
+          final pauseStr = mins >= 60 ? '${mins ~/ 60} heure${mins ~/ 60 > 1 ? "s" : ""}${mins % 60 > 0 ? " et ${mins % 60} minutes" : ""}' : '$mins minutes';
+          await _parler('Coupure de $pauseStr. Avez-vous effectué des achats ?');
+        } else {
+          await _parler('Combien de minutes de coupure ?');
+        }
+        break;
+
+      case 'demande_achats':
+        if (t.contains('oui') || t.contains('j ai') || t.contains('achats') || t.contains('cafe') ||
+            t.contains('essence') || t.contains('repas') || t.contains('boisson')) {
+          _etatConv = 'achats';
+          await _parler('Quels ont été vos achats ?');
+        } else if (t.contains('non') || t.contains('rien') || t.contains('aucun') || t.contains('pas')) {
+          if (!_isCongesPaies && !_jourNonTravaille) {
+            _etatConv = 'longue_distance';
+            await _parler('Avez-vous eu une prime longue distance ?');
+          } else {
+            _etatConv = 'confirmer';
+            await _parler('Dois-je sauvegarder cette garde ?');
+          }
+        } else {
+          await _parler('Avez-vous effectué des achats ? Répondez oui ou non.');
+        }
+        break;
+
+      case 'achats':
+        if (t.contains('rien') || t.contains('aucun') || t.contains('c est tout') ||
+            t.contains('termine') || t.contains('pas d achat') || t.contains('pas de frais') ||
+            (t.contains('non') && t.length < 8)) {
+                    if (!_isCongesPaies && !_jourNonTravaille) {
+            _etatConv = 'longue_distance';
+            await _parler('Avez-vous eu une prime longue distance ?');
+          } else {
+            _etatConv = 'confirmer';
+            await _parler('Dois-je sauvegarder cette garde ?');
+          }
+        } else {
+          final avant = _achats.length;
+          _analyserVoix(rep);
+          if (_achats.length > avant) {
+            _etatConv = 'autres_achats';
+            await _parler('Très bien. Avez-vous d\'autres achats ?');
+          } else {
+            final mots = ['cafe','chocolat','the','tisane','sandwich','croissant',
+                'boisson','pizza','jus','eau','repas','essence','carburant','gasoil',
+                'red bull','redbull','monster','orangina','fanta','coca','coca cola','coca-cola','pepsi','limonade','schweppes'];
+            final nom = mots.firstWhere((m) => t.contains(m), orElse: () => '');
+            if (nom.isNotEmpty) {
+              _articleEnAttente = nom;
+              _etatConv = 'prix_achat';
+              await _parler('Quel est le prix de $nom ?');
+            } else {
+              await _parler('Je n\'ai pas reconnu cet achat. Pouvez-vous préciser ? Dites par exemple : un café à un euro cinquante, ou bien : rien.');
+            }
+          }
+        }
+        break;
+
+      case 'prix_achat':
+        String rn = t
+            .replaceAllMapped(RegExp(r'(\d+)\s+euros?\s+(\d{1,2})'),
+                (m) => '${m.group(1)}.${m.group(2)!.padLeft(2,"0")}')
+            .replaceAll(RegExp(r'euros?'), '')
+            .replaceAllMapped(RegExp(r'(\d{1,3})\s*(?:centimes?|cts?)'),
+                (m) { final v = (int.tryParse(m.group(1) ?? '0') ?? 0) / 100; return v.toStringAsFixed(2); })
+            .replaceAllMapped(RegExp(r'(\d),(\d)'), (m) => '${m.group(1)}.${m.group(2)}');
+        final mp = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(rn);
+        if (mp != null) {
+          final montant = double.tryParse(mp.group(1) ?? '0') ?? 0;
+          if (montant > 0) {
+            _achats.add(Achat(
+              id: DateTime.now().microsecondsSinceEpoch.toString(),
+              intitule: _capitaliser(_articleEnAttente),
+              montant: montant,
+            ));
+            setState(() {});
+            _etatConv = 'autres_achats';
+            await _parler('${_capitaliser(_articleEnAttente)}, ${_montantEnMots(montant)}. Avez-vous d\'autres achats ?');
+            break;
+          }
+        }
+        await _parler('Je n\'ai pas compris le prix. Dites par exemple : un euro cinquante.');
+        break;
+
+      case 'autres_achats':
+        if (t.contains('rien') || t.contains('c est tout') || t.contains('suffit') ||
+            t.contains('termine') || t.contains('pas d autre') || t.contains('pas de frais') ||
+            (t.contains('non') && t.length < 8)) {
+                    if (!_isCongesPaies && !_jourNonTravaille) {
+            _etatConv = 'longue_distance';
+            await _parler('Avez-vous eu une prime longue distance ?');
+          } else {
+            _etatConv = 'confirmer';
+            await _parler('Dois-je sauvegarder cette garde ?');
+          }
+        } else {
+          _etatConv = 'achats';
+          await _traiterReponse(rep);
+        }
+        break;
+
+      case 'fin_achats':
+        if (t.contains('oui') || t.contains('c est tout') || t.contains('suffit') ||
+            t.contains('termine') || t.contains('rien')) {
+          if (!_isCongesPaies && !_jourNonTravaille) {
+            _etatConv = 'longue_distance';
+            await _parler('Avez-vous eu une prime longue distance ?');
+          } else {
+            _etatConv = 'confirmer';
+            await _parler('Dois-je sauvegarder cette garde ?');
+          }
+        } else if (t.contains('non') || t.contains('encore') || t.contains('autre')) {
+          _etatConv = 'achats';
+          await _parler('D\'accord. Quels autres achats ?');
+        } else {
+          await _parler('Est-ce tout ? Répondez oui ou non.');
+        }
+        break;
+
+      case 'longue_distance':
+        if (t.contains('oui') || t.contains('longue') || t.contains('prime')) {
+          _etatConv = 'montant_longue_distance';
+          await _parler('Quel est le montant de la prime longue distance ?');
+        } else if (t.contains('non') || t.contains('pas') || t.contains('aucune')) {
+          setState(() { _avecLongueDistance = false; _primeLongueDistance = 0; _longuePrimeCtrl.clear(); });
+          _etatConv = 'confirmer';
+          await _parler('Dois-je sauvegarder cette garde ?');
+        } else {
+          await _parler('Avez-vous eu une prime longue distance ? Répondez oui ou non.');
+        }
+        break;
+
+      case 'montant_longue_distance':
+        {
+          final mMontant = RegExp(r'(\d+(?:[.,]\d+)?)').firstMatch(t);
+          if (mMontant != null) {
+            final montant = double.tryParse(mMontant.group(1)!.replaceAll(',', '.')) ?? 0;
+            setState(() {
+              _avecLongueDistance = true;
+              _primeLongueDistance = montant;
+              _longuePrimeCtrl.text = montant.toStringAsFixed(2);
+            });
+            _etatConv = 'confirmer';
+            await _parler('Prime longue distance de ${montant.toStringAsFixed(0)} euros enregistrée. Dois-je sauvegarder cette garde ?');
+          } else {
+            await _parler('Je n\'ai pas compris le montant. Répétez le montant en euros, par exemple cinquante euros.');
+          }
+        }
+        break;
+
+      case 'conge_debut':
+        {
+          final dateD = _parseDate(rep);
+          setState(() => _date = dateD);
+          final moisNCD = ['','janvier','fevrier','mars','avril','mai','juin',
+              'juillet','aout','septembre','octobre','novembre','decembre'];
+          final jourDebutD = dateD.day == 1 ? 'premier' : dateD.day.toString();
+          final moisDebutD = moisNCD[dateD.month];
+          if (_isCongesPaies) {
+            _etatConv = 'conge_fin';
+            await _parler('Du $jourDebutD $moisDebutD. Quel est le dernier jour des conges ?');
+          } else {
+            _etatConv = 'confirmer';
+            await _parler('Jour non travaille le $jourDebutD $moisDebutD. Dois-je sauvegarder ?');
+          }
+        }
+        break;
+
+      case 'conge_fin':
+        {
+        final dateDebutSaved = _date;
+        final moisNC2 = ['','janvier','fevrier','mars','avril','mai','juin',
+            'juillet','aout','septembre','octobre','novembre','decembre'];
+        final jourD2 = dateDebutSaved.day == 1 ? 'premier' : '${dateDebutSaved.day}';
+        final moisD2 = moisNC2[dateDebutSaved.month];
+        // Détecte "pendant X jours" ou "X jours"
+        final mDuree2 = RegExp(r'pendant\s+(\d+)\s*jours?|(\d+)\s*jours?').firstMatch(t);
+        DateTime dateFin;
+        int? nbJoursTotal;
+        if (mDuree2 != null) {
+          nbJoursTotal = int.tryParse(mDuree2.group(1) ?? mDuree2.group(2) ?? '1') ?? 1;
+          dateFin = dateDebutSaved.add(Duration(days: nbJoursTotal - 1));
+        } else {
+          dateFin = _parseDate(rep);
+        }
+        setState(() {
+          _date = dateDebutSaved;
+          _cpDateFin = dateFin;
+          _isCongesPaies = true;
+          _jourNonTravaille = false;
+        });
+        final jourF = dateFin.day == 1 ? 'premier' : '${dateFin.day}';
+        final moisF = moisNC2[dateFin.month];
+        _etatConv = 'confirmer';
+        if (nbJoursTotal != null) {
+          await _parler('Conges payes du $jourD2 $moisD2 pendant $nbJoursTotal jours, jusqu au $jourF $moisF. Dois-je sauvegarder ?');
+        } else {
+          await _parler('Conges payes du $jourD2 $moisD2 au $jourF $moisF. Dois-je sauvegarder ?');
+        }
+        }
+        break;
+
+      case 'cp_conflict':
+        if (t.contains('annule') || t.contains('supprime') || t.contains('conge') ||
+            t.contains('oui')) {
+          // Supprime le CP et garde la date choisie
+          final cpIds = widget.toutesGardes
+              .where((g) => g.isCongesPaies)
+              .map((g) => g.id).toList();
+          if (widget.onSupprimerGardeId != null) {
+            for (final id in cpIds) widget.onSupprimerGardeId!(id);
+          }
+          _etatConv = 'heures';
+          await _parler('Conges annules. Quels sont les horaires ?');
+        } else if (t.contains('changer') || t.contains('modifier') || t.contains('non') ||
+                   t.contains('autre') || t.contains('date')) {
+          _etatConv = 'date';
+          await _parler('D\'accord. Quelle autre date ?');
+        } else {
+          await _parler('Voulez-vous annuler le conge ou changer la date ?');
+        }
+        break;
+
+      case 'confirmer':
+        if (t.contains('oui') || t.contains('sauvegarde') || t.contains('enregistre') ||
+            t.contains('c est bon') || t.contains('parfait') || t.contains('valide') ||
+            t.contains('ok') || t == 'oui' || t.trim() == 'oui') {
+          // Vérifie doublon avant d'enregistrer
+          if (!_isCongesPaies && !_jourNonTravaille) {
+            final estModif = widget.gardeAModifier != null;
+            final gardeExistante = widget.toutesGardes.where((g) {
+              if (g.isCongesPaies || g.jourNonTravaille) return false;
+              if (estModif && g.id == widget.gardeAModifier!.id) return false;
+              final gD = DateTime(g.date.year, g.date.month, g.date.day);
+              final cible = DateTime(_date.year, _date.month, _date.day);
+              return gD == cible;
+            }).firstOrNull;
+            if (gardeExistante != null) {
+              _etatConv = 'confirmer_doublon';
+              final mN = ['','janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];
+              final jW = _date.day == 1 ? 'premier' : '${_date.day}';
+              final moW = mN[_date.month];
+              await _parler('Attention, il y a deja une garde le $jW $moW. Voulez-vous quand meme enregistrer ?');
+              break;
+            }
+          }
+          setState(() => _etatConv = '');
+          await _tts.stop();
+          // Vérification orale chevauchement CP avec gardes existantes
+          if (_isCongesPaies) {
+            final debutCP = DateTime(_date.year, _date.month, _date.day);
+            final finCP = _cpDateFin != null ? DateTime(_cpDateFin!.year, _cpDateFin!.month, _cpDateFin!.day) : debutCP;
+            final gardesConflits = widget.toutesGardes.where((g) {
+              if (g.isCongesPaies || g.jourNonTravaille) return false;
+              final gDate = DateTime(g.date.year, g.date.month, g.date.day);
+              return !gDate.isBefore(debutCP) && !gDate.isAfter(finCP);
+            }).toList();
+            if (gardesConflits.isNotEmpty) {
+              final nbG = gardesConflits.length;
+              await _parler('Attention, $nbG garde${nbG > 1 ? "s sont" : " est"} déjà comptabilisée${nbG > 1 ? "s" : ""} sur cette période. Congé enregistré quand même.');
+            }
+          }
+          if (_checkCPChevauchement()) return;
+          _enregistrerGarde();  // enregistre D'ABORD
+          await _parler('Parfait, garde enregistree !');
+          // Réinitialise APRÈS enregistrement
+          Future.delayed(const Duration(milliseconds: 2000), () {
+            if (mounted) _reinitialiserFormulaire();
+          });
+        } else if (t.contains('non') || t.contains('annule') || t.contains('modifier')) {
+          _reinitialiserFormulaire();
+          await _parler('D\'accord, formulaire réinitialisé.');
+        } else {
+          await _parler('Dois-je sauvegarder cette garde ? Dites oui ou non.');
+        }
+        break;
+
+      case 'confirmer_doublon':
+        if (t.contains('oui') || t.contains('quand meme') || t.contains('confirme')) {
+          setState(() => _etatConv = '');
+          _enregistrerGarde();
+          await _parler('Garde enregistrée !');
+          Future.delayed(const Duration(milliseconds: 1800), () {
+            if (mounted) setState(() {
+              _date = DateTime.now();
+              _debutHeureCtrl.text = '07'; _debutMinCtrl.text = '00';
+              _finHeureCtrl.text = '17'; _finMinCtrl.text = '00';
+              _avecPause = false; _pauseMinutes = 0;
+              _avecPanier = false; _achats = [];
+              _collegueCtrl.text = ''; _vehiculeCtrl.text = '';
+              _isCongesPaies = false; _jourNonTravaille = false; _cpDateFin = null;
+              _etatConv = '';
+            });
+          });
+        } else {
+          setState(() {
+            _etatConv = '';
+            // Réinitialise le formulaire
+            _date = DateTime.now();
+            _debutHeureCtrl.text = '07';
+            _debutMinCtrl.text = '00';
+            _finHeureCtrl.text = '17';
+            _finMinCtrl.text = '00';
+            _avecPause = false; _pauseMinutes = 0;
+            _avecPanier = false;
+            _achats = [];
+            _collegueCtrl.text = '';
+            _vehiculeCtrl.text = '';
+            _isCongesPaies = false;
+            _jourNonTravaille = false;
+            _cpDateFin = null;
+          });
+          await _parler('D\'accord, garde annulée. Formulaire réinitialisé.');
+        }
+        break;
+    }
+  }
+
+  Future<void> _parlerRecap() async {
+    // Plus utilisé dans ce flux mais gardé pour compatibilité
+    await _parler('Merci, est-ce tout ?');
+  }
+
+
+  void _arreterEcoute() {
+    // Arrête uniquement l'écoute — NE réinitialise PAS la conversation
+    _tts.stop();
+    _speech.stop();
+    setState(() { _ecoute = false; _ttsActif = false; _texteVocal = ''; });
+    // _etatConv conservé pour pouvoir reprendre
+  }
+
+  void _arreterTout() {
+    // Arrêt complet avec réinitialisation (bouton annuler explicite)
+    _tts.stop();
+    _speech.stop();
+    setState(() { _ecoute = false; _ttsActif = false; _etatConv = ''; _texteVocal = ''; });
+  }
+
+  // Vérifie chevauchement CP — retourne true si conflit (et affiche message)
+  bool _checkCPChevauchement() {
+    if (!_isCongesPaies) return false;
+    final debutCP = DateTime(_date.year, _date.month, _date.day);
+    final finCP = _cpDateFin != null
+        ? DateTime(_cpDateFin!.year, _cpDateFin!.month, _cpDateFin!.day)
+        : debutCP;
+    final estModif = widget.gardeAModifier != null;
+
+    final chevauchement = widget.toutesGardes.where((g) {
+      if (estModif && g.id == widget.gardeAModifier!.id) return false;
+      final gDate = DateTime(g.date.year, g.date.month, g.date.day);
+      if (g.isCongesPaies) {
+        final gFin = g.cpDateFin != null
+            ? DateTime(g.cpDateFin!.year, g.cpDateFin!.month, g.cpDateFin!.day)
+            : gDate;
+        return !(finCP.isBefore(gDate) || debutCP.isAfter(gFin));
+      } else if (!g.jourNonTravaille) {
+        return !gDate.isBefore(debutCP) && !gDate.isAfter(finCP);
+      }
+      return false;
+    }).firstOrNull;
+
+    if (chevauchement != null) {
+      final msg = chevauchement.isCongesPaies
+          ? '⛔ Période déjà saisie en congés payés'
+          : '⛔ Période déjà saisie — une garde existe le ${chevauchement.date.day}/${chevauchement.date.month}';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(msg, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ));
+      return true;
+    }
+    return false;
   }
 
   void _sauvegarderGarde() {
@@ -230,6 +1152,11 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 4),
         ));
+        // Réinitialiser le formulaire pour éviter que le CP reste affiché
+        setState(() {
+          _isCongesPaies = false; _jourNonTravaille = false; _cpDateFin = null;
+          _etatConv = '';
+        });
         return;
       }
 
@@ -275,9 +1202,24 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         return;
       }
     }
+
+    if (_checkCPChevauchement()) return;
     _enregistrerGarde();
   }
 
+
+  void _reinitialiserFormulaire() {
+    setState(() {
+      _date = DateTime.now();
+      _debutHeureCtrl.text = '07'; _debutMinCtrl.text = '00';
+      _finHeureCtrl.text = '17'; _finMinCtrl.text = '00';
+      _avecPause = false; _pauseMinutes = 0;
+      _avecPanier = false; _achats = [];
+      _collegueCtrl.text = ''; _vehiculeCtrl.text = '';
+      _isCongesPaies = false; _jourNonTravaille = false; _cpDateFin = null;
+      _etatConv = '';
+    });
+  }
   void _enregistrerGarde() {
     final g = _buildGarde();
     final estModif = widget.gardeAModifier != null;
@@ -300,10 +1242,22 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         .replaceAll('î', 'i').replaceAll('ï', 'i')
         .replaceAll('ô', 'o').replaceAll('ù', 'u').replaceAll('û', 'u')
         .replaceAll('ç', 'c')
-        // Chiffres en lettres
-        .replaceAll('dix-sept', '17').replaceAll('dix sept', '17')
-        .replaceAll('dix-huit', '18').replaceAll('dix huit', '18')
+        // Chiffres en lettres — composés D'ABORD, puis simples
+        .replaceAll('trente et un', '31').replaceAll('trente-et-un', '31')
+        .replaceAll('trente et une', '31')
+        .replaceAll('vingt-neuf', '29').replaceAll('vingt neuf', '29')
+        .replaceAll('vingt-huit', '28').replaceAll('vingt huit', '28')
+        .replaceAll('vingt-sept', '27').replaceAll('vingt sept', '27')
+        .replaceAll('vingt-six', '26').replaceAll('vingt six', '26')
+        .replaceAll('vingt-cinq', '25').replaceAll('vingt cinq', '25')
+        .replaceAll('vingt-quatre', '24').replaceAll('vingt quatre', '24')
+        .replaceAll('vingt-trois', '23').replaceAll('vingt trois', '23')
+        .replaceAll('vingt-deux', '22').replaceAll('vingt deux', '22')
+        .replaceAll('vingt et un', '21').replaceAll('vingt-et-un', '21')
+        .replaceAll('vingt et une', '21')
         .replaceAll('dix-neuf', '19').replaceAll('dix neuf', '19')
+        .replaceAll('dix-huit', '18').replaceAll('dix huit', '18')
+        .replaceAll('dix-sept', '17').replaceAll('dix sept', '17')
         .replaceAll('vingt', '20').replaceAll('trente', '30')
         .replaceAll('quarante', '40').replaceAll('cinquante', '50')
         .replaceAll('soixante', '60').replaceAll('onze', '11')
@@ -312,7 +1266,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         .replaceAll('seize', '16').replaceAll('deux', '2')
         .replaceAll('trois', '3').replaceAll('quatre', '4')
         .replaceAll('cinq', '5').replaceAll('neuf', '9')
-        .replaceAll('six', '6')
+        .replaceAll('six', '6').replaceAll('sept', '7').replaceAll('huit', '8')
+        .replaceAll('premier', '1').replaceAll('premiere', '1')
+        .replaceAll('un', '1').replaceAll('une', '1')
         // Apostrophes et liaisons
         .replaceAll("j'etais", 'jetais').replaceAll("j'étais", 'jetais')
         .replaceAll("j.ai", 'jai').replaceAll("j'ai", 'jai').replaceAll("j'", 'j ')
@@ -391,7 +1347,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         }
       }
       final motsCles = ['essence', 'carburant', 'gasoil', 'parking', 'peage',
-          'sandwich', 'cafe', 'chocolat', 'the', 'tisane', 'repas', 'croissant', 'boisson', 'pizza'];
+          'sandwich', 'cafe', 'chocolat', 'the', 'tisane', 'repas', 'croissant', 'boisson', 'pizza',
+            'red bull', 'redbull', 'monster', 'orangina', 'fanta', 'coca', 'coca cola', 'coca-cola', 'pepsi', 'limonade', 'schweppes'];
       for (final mc in motsCles) {
         if (t.contains(mc)) {
           // Cherche si un montant est mentionné
@@ -453,6 +1410,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         _achats = [];
         _avecPause = false;          _pauseMinutes = 0;
         _avecPanier = false;          _jourNonTravaille = false;
+        _avecLongueDistance = false; _primeLongueDistance = 0; _longuePrimeCtrl.clear();
         _isCongesPaies = false;      _cpDateFin = null;
       });
       _feedback('✓ Formulaire réinitialisé');
@@ -556,7 +1514,13 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       moisTrouve = moisMap[mDC.group(2)];
     } else {
       final mJ = RegExp(r'\ble\s+(\d{1,2})\b').firstMatch(t);
-      if (mJ != null) jourTrouve = int.tryParse(mJ.group(1) ?? '');
+      if (mJ != null) {
+        jourTrouve = int.tryParse(mJ.group(1) ?? '');
+      } else {
+        // Chiffre seul sans "le" → jour du mois courant
+        final mJseul = RegExp(r'^\s*(\d{1,2})\s*$').firstMatch(t.trim());
+        if (mJseul != null) jourTrouve = int.tryParse(mJseul.group(1) ?? '');
+      }
     }
     if (jourTrouve != null && jourTrouve >= 1 && jourTrouve <= 31)
       nouvellDate = DateTime(_date.year, moisTrouve ?? _date.month, jourTrouve);
@@ -771,9 +1735,27 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         .replaceAll('jai use', 'jai depense').replaceAll('jai utilisé', 'jai depense')
         .replaceAll('jai mis', 'jai depense');
 
+    // ── CONVERSION NOMBRES EN LETTRES → CHIFFRES ────────────────
+    // Android peut dire "un euro cinquante" ou "un point zero zero"
+    String tConv = tAchatBase
+        .replaceAll('zero', '0').replaceAll('zéro', '0')
+        .replaceAll('\bun\b', '1').replaceAll('\bdeux\b', '2')
+        .replaceAll('\btrois\b', '3').replaceAll('\bquatre\b', '4')
+        .replaceAll('\bcinq\b', '5').replaceAll('\bsix\b', '6')
+        .replaceAll('\bsept\b', '7').replaceAll('\bhuit\b', '8')
+        .replaceAll('\bneuf\b', '9').replaceAll('\bdix\b', '10')
+        .replaceAll('\bonze\b', '11').replaceAll('\bdouze\b', '12')
+        .replaceAll('\bquinze\b', '15').replaceAll('\bvingt\b', '20')
+        .replaceAll('\btrente\b', '30').replaceAll('\bquarante\b', '40')
+        .replaceAll('cinquante', '50').replaceAll('cinquant', '50')
+        .replaceAll('\bsoixante\b', '60').replaceAll('\bsoixante-dix\b', '70')
+        .replaceAll('\bquatre-vingts?\b', '80').replaceAll('\bquatre-vingt-dix\b', '90')
+        .replaceAll('point', '.') // "un point cinquante" → "1.50"
+        .replaceAll('virgule', '.'); // "un virgule cinquante" → "1.50"
+
     // ── NORMALISATION DES MONTANTS ────────────────────────────────
     // "7 euros 50" → "7.50", "1 euro 50" → "1.50", "50 centimes" → "0.50"
-    String tNorm = tAchatBase
+    String tNorm = tConv
         // "X euros Y" → "X.Y" (ex: "7 euros 50" → "7.50")
         .replaceAllMapped(
             RegExp(r'(\d+)\s+euros?\s+(\d{1,2})\b'),
@@ -793,7 +1775,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     // Mots déclencheurs élargis — tout ce qui indique une dépense
     final declencheurs = RegExp(
         r'jai\s+(?:pris|achete|paye|mange|dejeune|dine|bu|commande|offert|depense|mis|fait\s+le\s+plein)|'
-        r'(?:repas|cafe|chocolat|the|tisane|sandwich|croissant|boisson|pizza|jus|eau|menu|pain|baguette|'
+        r'(?:repas|cafe|chocolat|the|tisane|sandwich|croissant|boisson|pizza|jus|eau|menu|pain|baguette|red bull|redbull|monster|orangina|fanta|coca|coca cola|pepsi|limonade|schweppes|'
         r'essence|carburant|gasoil|parking|peage)\s+(?:pour|a|au prix)?\s*\d|'
         r'\d+(?:\.\d+)?\s*(?:pour\s+(?:le|la|un|une|du|mon|ma))');
 
@@ -849,7 +1831,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         // Si article reconnu SANS montant → demande vocalement
         if (intitule.length > 1 && montant == 0 &&
             !exclus.contains(intitule.split(' ').first)) {
-          _demanderPrix(intitule);
+          _articleEnAttente = intitule;
+          _etatConv = 'prix_achat';
+          _parler('Quel est le prix de ' + intitule + ' ?');
           return;
         }
         if (intitule.length > 1 && montant > 0 &&
@@ -934,6 +1918,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     _cpDateFin = g?.cpDateFin;
     _avecPanier = g?.avecPanier ?? false;
     _panierRepasGarde = g?.panierRepasGarde ?? widget.panierRepas;
+    _avecLongueDistance = (g?.primeLongueDistance ?? 0) > 0;
+    _primeLongueDistance = g?.primeLongueDistance ?? 0;
     if (g != null && g.pauseMinutes > 0) { _avecPause = true; _pauseMinutes = g.pauseMinutes; }
     _achats = g != null ? List.from(g.achats) : [];
 
@@ -947,6 +1933,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     _finMinCtrl     = TextEditingController(text: fm.toString().padLeft(2, '0'));
     _collegueCtrl   = TextEditingController(text: g?.collegue ?? '');
     _vehiculeCtrl   = TextEditingController(text: g?.vehiculeUtilise ?? '');
+    _longuePrimeCtrl = TextEditingController(text: (g?.primeLongueDistance ?? 0) > 0 ? (g!.primeLongueDistance.toStringAsFixed(2)) : '');
 
     // Listeners pour mise à jour dynamique du calcul CCN
     _debutHeureCtrl.addListener(() => setState(() {}));
@@ -960,11 +1947,166 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     _debutHeureCtrl.dispose(); _debutMinCtrl.dispose();
     _finHeureCtrl.dispose(); _finMinCtrl.dispose();
     _collegueCtrl.dispose(); _vehiculeCtrl.dispose();
+    _longuePrimeCtrl.dispose();
     super.dispose();
   }
 
+
+  // Convertit un montant en texte naturel pour la TTS
+  String _montantEnMots(double montant) {
+    final euros = montant.truncate();
+    final centimes = ((montant - euros) * 100).round();
+    if (centimes == 0) {
+      return euros == 1 ? '1 euro' : '$euros euros';
+    } else if (euros == 0) {
+      return '$centimes centimes';
+    } else {
+      return euros == 1 ? '1 euro $centimes' : '$euros euros $centimes';
+    }
+  }
   int _val(TextEditingController c, int max) =>
       (int.tryParse(c.text) ?? 0).clamp(0, max);
+
+  // Parse une date sans toucher aux flags isCongesPaies / jourNonTravaille
+  // Convertit les nombres écrits en chiffres pour la reconnaissance vocale
+  String _normaliserNombres(String t) {
+    return t
+      .replaceAll('trente et un', '31').replaceAll('trente-et-un', '31')
+      .replaceAll('trente et une', '31')
+      .replaceAll('trente', '30')
+      .replaceAll('vingt-neuf', '29').replaceAll('vingt neuf', '29')
+      .replaceAll('vingt-huit', '28').replaceAll('vingt huit', '28')
+      .replaceAll('vingt-sept', '27').replaceAll('vingt sept', '27')
+      .replaceAll('vingt-six', '26').replaceAll('vingt six', '26')
+      .replaceAll('vingt-cinq', '25').replaceAll('vingt cinq', '25')
+      .replaceAll('vingt-quatre', '24').replaceAll('vingt quatre', '24')
+      .replaceAll('vingt-trois', '23').replaceAll('vingt trois', '23')
+      .replaceAll('vingt-deux', '22').replaceAll('vingt deux', '22')
+      .replaceAll('vingt et un', '21').replaceAll('vingt-et-un', '21')
+      .replaceAll('vingt', '20')
+      .replaceAll('dix-neuf', '19').replaceAll('dix neuf', '19')
+      .replaceAll('dix-huit', '18').replaceAll('dix huit', '18')
+      .replaceAll('dix-sept', '17').replaceAll('dix sept', '17')
+      .replaceAllMapped(RegExp(r'\bseize\b'), (m) => '16')
+      .replaceAllMapped(RegExp(r'\bquinze\b'), (m) => '15')
+      .replaceAllMapped(RegExp(r'\bquatorze\b'), (m) => '14')
+      .replaceAllMapped(RegExp(r'\btreize\b'), (m) => '13')
+      .replaceAllMapped(RegExp(r'\bdouze\b'), (m) => '12')
+      .replaceAllMapped(RegExp(r'\bonze\b'), (m) => '11')
+      .replaceAllMapped(RegExp(r'\bdix\b'), (m) => '10')
+      .replaceAllMapped(RegExp(r'\bneuf\b'), (m) => '9')
+      .replaceAllMapped(RegExp(r'\bhuit\b'), (m) => '8')
+      .replaceAllMapped(RegExp(r'\bsept\b'), (m) => '7')
+      .replaceAllMapped(RegExp(r'\bsix\b'), (m) => '6')
+      .replaceAllMapped(RegExp(r'\bcinq\b'), (m) => '5')
+      .replaceAllMapped(RegExp(r'\bquatre\b'), (m) => '4')
+      .replaceAllMapped(RegExp(r'\btrois\b'), (m) => '3')
+      .replaceAllMapped(RegExp(r'\bdeux\b'), (m) => '2')
+      .replaceAllMapped(RegExp(r'\bpremier\b'), (m) => '1')
+      .replaceAllMapped(RegExp(r'\bpremière\b'), (m) => '1')
+      .replaceAllMapped(RegExp(r'\bun\b'), (m) => '1')
+      .replaceAllMapped(RegExp(r'\bune\b'), (m) => '1');
+  }
+
+  DateTime _parseDate(String rep) {
+    String t = rep.toLowerCase()
+        .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a')
+        .replaceAll("'", ' ');
+    final now = DateTime.now();
+    if (t.contains('avant hier') || t.contains('avanthier')) return now.subtract(const Duration(days: 2));
+    if (t.contains('hier')) return now.subtract(const Duration(days: 1));
+    if (t.contains('aujourd') || t.contains('maintenant')) return now;
+    // Protège les noms de mois avant la normalisation des nombres
+    // (ex: 'septembre' contient 'sept', 'janvier' contient 'un', etc.)
+    const _moisPlaceholders = {
+      'janvier': 'MOIS01', 'fevrier': 'MOIS02', 'mars': 'MOIS03',
+      'avril': 'MOIS04', 'mai': 'MOIS05', 'juin': 'MOIS06',
+      'juillet': 'MOIS07', 'aout': 'MOIS08', 'septembre': 'MOIS09',
+      'octobre': 'MOIS10', 'novembre': 'MOIS11', 'decembre': 'MOIS12',
+    };
+    for (final e in _moisPlaceholders.entries) {
+      t = t.replaceAll(e.key, e.value);
+    }
+    // Convertir les nombres écrits en chiffres
+    t = _normaliserNombres(t);
+    // Restaure les noms de mois
+    for (final e in _moisPlaceholders.entries) {
+      t = t.replaceAll(e.value, e.key);
+    }
+    final moisMap = {'janvier':1,'fevrier':2,'mars':3,'avril':4,'mai':5,'juin':6,
+        'juillet':7,'aout':8,'septembre':9,'octobre':10,'novembre':11,'decembre':12};
+    // "le 10 avril", "10 avril"
+    for (final entry in moisMap.entries) {
+      // Use word boundary for 'mai' to avoid false matches
+      final moisRegex = entry.key == 'mai'
+          ? RegExp(r'\bmai\b')
+          : RegExp(entry.key);
+      if (moisRegex.hasMatch(t)) {
+        final mR = RegExp(r'(?:le\s+)?(\d{1,2})(?:er|e|eme)?\s+' + entry.key).firstMatch(t);
+        if (mR != null) {
+          final jour = int.tryParse(mR.group(1) ?? '') ?? now.day;
+          return DateTime(now.year, entry.value, jour);
+        }
+        // Cherche aussi le chiffre seul après le mois : "mars 15"
+        final mR2 = RegExp(entry.key + r'\s+(\d{1,2})').firstMatch(t);
+        if (mR2 != null) {
+          final jour = int.tryParse(mR2.group(1) ?? '') ?? now.day;
+          return DateTime(now.year, entry.value, jour);
+        }
+        // Cherche un chiffre n'importe où dans la phrase
+        final mN2 = RegExp(r'\b(\d{1,2})\b').firstMatch(t);
+        if (mN2 != null) {
+          final jour = int.tryParse(mN2.group(1) ?? '') ?? 1;
+          if (jour >= 1 && jour <= 31) return DateTime(now.year, entry.value, jour);
+        }
+        // Mois seul → 1er du mois
+        return DateTime(now.year, entry.value, 1);
+      }
+    }
+    // Nombre seul → jour du mois courant
+    final mN = RegExp(r'\b(\d{1,2})\b').firstMatch(t);
+    if (mN != null) {
+      final j = int.tryParse(mN.group(1) ?? '') ?? now.day;
+      return DateTime(now.year, now.month, j);
+    }
+    return now;
+  }
+
+
+  int _parseMinutes(String t) {
+    // Convertit les nombres écrits en chiffres d'abord
+    String s = t
+        .replaceAll('une heure et demie', '90min').replaceAll('heure et demie', '90min')
+        .replaceAll('une demi heure', '30min').replaceAll('demi heure', '30min')
+        .replaceAll('une heure', '60min').replaceAll('un heure', '60min')
+        .replaceAll('deux heures', '120min').replaceAll('deux heure', '120min')
+        .replaceAll('trente cinq minutes', '35min').replaceAll('trente-cinq minutes', '35min').replaceAll('trente cinq', '35').replaceAll('trente-cinq', '35').replaceAll('trente minutes', '30min').replaceAll('trente', '30')
+        .replaceAll('quarante cinq', '45').replaceAll('quarante-cinq', '45')
+        .replaceAll('quinze minutes', '15min').replaceAll('quinze', '15')
+        .replaceAll('vingt minutes', '20min').replaceAll('vingt', '20')
+        .replaceAll('dix minutes', '10min').replaceAll('dix', '10')
+        .replaceAll('cinq minutes', '5min').replaceAll('cinq', '5');
+    int total = 0;
+    // "1h30" combiné → priorité maximale
+    final mComb = RegExp(r'(\d+)h(\d{2})').firstMatch(s);
+    if (mComb != null) {
+      return (int.tryParse(mComb.group(1) ?? '0') ?? 0) * 60 +
+             (int.tryParse(mComb.group(2) ?? '0') ?? 0);
+    }
+    // "Xh" ou "X heure(s)" → heures × 60
+    final mH = RegExp(r'(\d+)\s*h(?:eure)?s?').firstMatch(s);
+    if (mH != null) total += (int.tryParse(mH.group(1) ?? '0') ?? 0) * 60;
+    // "X min" → minutes
+    final mM = RegExp(r'(\d+)\s*(?:min(?:ute)?s?)').firstMatch(s);
+    if (mM != null) total += int.tryParse(mM.group(1) ?? '0') ?? 0;
+    // Aucun match → premier nombre brut
+    if (total == 0) {
+      final mN = RegExp(r'(\d+)').firstMatch(s);
+      total = int.tryParse(mN?.group(1) ?? '0') ?? 0;
+    }
+    return total;
+  }
+
 
   Garde _buildGarde() {
     final dh = _val(_debutHeureCtrl, 23); final dm = _val(_debutMinCtrl, 59);
@@ -973,6 +2115,17 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     var fin    = DateTime(_date.year, _date.month, _date.day, fh, fm);
     if (!_jourNonTravaille && fin.isBefore(debut))
       fin = fin.add(const Duration(days: 1));
+    // Calcule le nombre de jours CP depuis la plage de dates
+    int nbJoursCP = 0;
+    if (_isCongesPaies) {
+      if (_cpDateFin != null) {
+        final debut2 = DateTime(_date.year, _date.month, _date.day);
+        final fin2 = DateTime(_cpDateFin!.year, _cpDateFin!.month, _cpDateFin!.day);
+        nbJoursCP = fin2.difference(debut2).inDays + 1;
+      } else {
+        nbJoursCP = 1;
+      }
+    }
     return Garde(
       id: widget.gardeAModifier?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       date: _date,
@@ -981,6 +2134,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       jourNonTravaille: _jourNonTravaille,
       isCongesPaies: _isCongesPaies,
       cpDateFin: _isCongesPaies ? _cpDateFin : null,
+      nbJoursCP: nbJoursCP,
       collegue: _collegueCtrl.text.trim().isEmpty ? null : _collegueCtrl.text.trim(),
       vehiculeUtilise: _vehiculeCtrl.text.trim().isEmpty ? null : _vehiculeCtrl.text.trim(),
       kmDomicileTravail: widget.kmDomicileTravail,
@@ -988,6 +2142,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       pauseMinutes: _avecPause && !_jourNonTravaille && !_isCongesPaies ? _pauseMinutes : 0,
       panierRepasGarde: _avecPanier && !_isCongesPaies ? _panierRepasGarde : 0,
       avecPanier: _avecPanier,
+      primeLongueDistance: _avecLongueDistance && !_isCongesPaies ? _primeLongueDistance : 0,
       debutQuatorzaine: widget.debutQuatorzaine,
       qualification: widget.poste,
     );
@@ -1146,37 +2301,89 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       backgroundColor: AppTheme.bgPrimary,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // ── En-tête ────────────────────────────────────────────
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                Text(estModif ? 'Modifier la garde' : 'Saisir une garde',
-                    style: AppTheme.titleStyle()),
+                Flexible(child: Text(estModif ? 'Modifier la garde' : 'Saisir une garde',
+                    style: AppTheme.titleStyle(), overflow: TextOverflow.ellipsis)),
                 GestureDetector(
-                  onTap: _ecoute ? _arreterEcoute : _demarrerEcoute,
+                  onTap: () {
+                    if (_ttsActif) {
+                      // TTS en cours → stop et réécoute
+                      _tts.stop();
+                      setState(() { _ttsActif = false; });
+                      if (_etatConv.isNotEmpty) _ecouterReponse();
+                    } else if (_ecoute) {
+                      // Écoute en cours → pause (garde l'état)
+                      _arreterEcoute();
+                    } else {
+                      // Inactif → démarre ou reprend
+                      _demarrerEcoute();
+                    }
+                  },
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                     decoration: BoxDecoration(
-                      color: _ecoute ? Colors.red.withOpacity(0.9)
+                      color: _ttsActif ? Colors.blue.withOpacity(0.9)
+                          : _ecoute ? Colors.red.withOpacity(0.9)
+                          : _etatConv.isNotEmpty ? AppTheme.blueAccent.withOpacity(0.9)
                           : AppTheme.colorGreen.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _ecoute ? Colors.red
+                      border: Border.all(color: _ttsActif ? Colors.blue
+                          : _ecoute ? Colors.red
+                          : _etatConv.isNotEmpty ? AppTheme.blueAccent
                           : AppTheme.colorGreen.withOpacity(0.4)),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(_ecoute ? Icons.stop : Icons.mic, size: 14,
-                          color: _ecoute ? Colors.white : AppTheme.colorGreen),
+                      Icon(
+                        _ttsActif ? Icons.volume_up
+                            : _ecoute ? Icons.stop
+                            : Icons.mic,
+                        size: 14,
+                        color: (_ttsActif || _ecoute || _etatConv.isNotEmpty)
+                            ? Colors.white : AppTheme.colorGreen,
+                      ),
                       const SizedBox(width: 4),
-                      Text(_ecoute ? 'Stop' : '🎤 Vocal',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                              color: _ecoute ? Colors.white : AppTheme.colorGreen)),
+                      Text(
+                        _ttsActif ? 'Parle...'
+                            : _ecoute ? 'Écoute'
+                            : _etatConv.isNotEmpty ? 'Continuer'
+                            : 'Vocal',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                            color: (_ttsActif || _ecoute || _etatConv.isNotEmpty)
+                                ? Colors.white : AppTheme.colorGreen),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ]),
                   ),
                 ),
               ]),
               const SizedBox(height: 6),
+              // Message de la question en cours
+              if (_etatConv.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.blueAccent.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.blueAccent.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    _ttsActif ? '🔊 Je réponds...'
+                        : _ecoute ? '🎤 Parlez maintenant...'
+                        : '🎤 Appuyez pour continuer',
+                    style: TextStyle(fontSize: 11, color: AppTheme.blueAccent,
+                        fontStyle: FontStyle.italic),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+              ],
               GestureDetector(
                 onTap: _selectDate,
                 child: Container(
@@ -1280,31 +2487,32 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             _sectionCard('Quatorzaine', Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text(labelQ, style: TextStyle(fontSize: 11,
-                      color: dq != null ? AppTheme.blueAccent : AppTheme.textTertiary,
-                      fontWeight: FontWeight.w500)),
-                  if (dq == null)
-                    Text('Paramètres →',
-                        style: TextStyle(fontSize: 10, color: AppTheme.textTertiary)),
-                ]),
-                if (dq != null) ...[
-                  const SizedBox(height: 8),
+                if (dq == null)
+                  Row(children: [
+                    const Icon(Icons.info_outline, size: 12, color: Colors.orange),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text('Non définie — à configurer dans Paramètres',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, color: AppTheme.textTertiary))),
+                  ])
+                else ...[
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Expanded(child: Text(labelQ, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, color: AppTheme.blueAccent,
+                            fontWeight: FontWeight.w500))),
+                    const SizedBox(width: 8),
+                    Text('J.${(_date.difference(dq).inDays.clamp(0, 13) + 1)}/14',
+                        style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                  ]),
+                  const SizedBox(height: 6),
                   ClipRRect(borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(value: prog, minHeight: 6,
+                    child: LinearProgressIndicator(value: prog, minHeight: 5,
                       backgroundColor: AppTheme.blueAccent.withOpacity(0.15),
                       valueColor: AlwaysStoppedAnimation<Color>(AppTheme.blueAccent))),
-                  const SizedBox(height: 4),
-                  Text('Jour ${(_date.difference(dq).inDays.clamp(0, 13) + 1)} / 14',
-                      style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
                 ],
               ],
             )),
-            const SizedBox(height: 10),
-
-            const SizedBox(height: 10),
-
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
 
             // ── Alerte si date en période CP ───────────────────────
             Builder(builder: (ctx) {
@@ -1618,6 +2826,39 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               const SizedBox(height: 10),
             ],
 
+            // ── Longue distance ─────────────────────────────────────
+            if (!_isCongesPaies && !_jourNonTravaille) _sectionCard('Longue distance', Column(children: [
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text('Prime longue distance',
+                    style: TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
+                Switch(value: _avecLongueDistance,
+                    onChanged: (v) => setState(() {
+                      _avecLongueDistance = v;
+                      if (!v) _primeLongueDistance = 0;
+                    })),
+              ]),
+              if (_avecLongueDistance) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _longuePrimeCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'Montant de la prime (€)',
+                    labelStyle: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                    prefixIcon: Icon(Icons.directions_car_outlined, size: 18, color: AppTheme.blueAccent),
+                    suffixText: '€',
+                    suffixStyle: TextStyle(color: AppTheme.textSecondary),
+                  ),
+                  onChanged: (v) {
+                    final val = double.tryParse(v.replaceAll(',', '.'));
+                    setState(() => _primeLongueDistance = val ?? 0);
+                  },
+                ),
+              ],
+            ])),
+            const SizedBox(height: 10),
+
             // ── Rappel (collègue + véhicule) ──────────────────────
             _sectionCard('Rappel', Column(children: [
               TextField(
@@ -1785,6 +3026,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                     garde.hasIDAJ ? '+${idaj.toStringAsFixed(2)} €' : null),
                 if (_avecPanier)
                   _calcRow('Panier repas', '${_panierRepasGarde.toStringAsFixed(2)} €', null),
+                if (_avecLongueDistance && _primeLongueDistance > 0)
+                  _calcRow('Prime longue distance', '+${_primeLongueDistance.toStringAsFixed(2)} €', null),
                 Divider(color: AppTheme.bgCardBorder),
                 _calcRow('Total brut estimé', '${brut.toStringAsFixed(2)} €', null, isBold: true),
               ]),
@@ -1806,17 +3049,13 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               ]),
             ),
             const SizedBox(height: 16),
-
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  final g = _buildGarde();
-                  if (estModif) { widget.onGardeModifiee!(g); }
-                  else { widget.onGardeAjoutee(g); }
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(estModif ? 'Garde modifiée !' : 'Garde enregistrée !')));
-                },
+                onPressed: _sauvegarderGarde,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.blueAccent,
+                ),
                 child: Text(estModif ? 'Enregistrer les modifications' : 'Enregistrer la garde',
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
               ),

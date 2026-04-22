@@ -13,8 +13,8 @@ class Achat {
   };
 
   factory Achat.fromMap(Map<String, dynamic> m) => Achat(
-    id: m['id'] as String,
-    intitule: m['intitule'] as String,
-    montant: (m['montant'] as num).toDouble(),
+    id: m['id'] as String? ?? '',
+    intitule: m['intitule'] as String? ?? '',
+    montant: (m['montant'] as num?)?.toDouble() ?? 0.0,
   );
 }

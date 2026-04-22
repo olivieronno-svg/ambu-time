@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../models/garde.dart';
 import '../models/prime.dart';
@@ -137,8 +136,20 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   Map<String, List<Garde>> _parMois(List<Garde> gardes) {
     final map = <String, List<Garde>>{};
     for (var g in gardes) {
-      final cle = '${g.date.year}-${g.date.month.toString().padLeft(2, '0')}';
-      map.putIfAbsent(cle, () => []).add(g);
+      if (g.isCongesPaies && g.cpDateFin != null &&
+          (g.cpDateFin!.month != g.date.month || g.cpDateFin!.year != g.date.year)) {
+        // CP chevauchant 2 mois — ajoute dans chaque mois concerné
+        DateTime cursor = DateTime(g.date.year, g.date.month, 1);
+        final finMois = DateTime(g.cpDateFin!.year, g.cpDateFin!.month, 1);
+        while (!cursor.isAfter(finMois)) {
+          final cle = "${cursor.year}-${cursor.month.toString().padLeft(2, '0')}";
+          map.putIfAbsent(cle, () => []).add(g);
+          cursor = DateTime(cursor.year, cursor.month + 1, 1);
+        }
+      } else {
+        final cle = "${g.date.year}-${g.date.month.toString().padLeft(2, '0')}";
+        map.putIfAbsent(cle, () => []).add(g);
+      }
     }
     return map;
   }
@@ -210,9 +221,16 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
       itemBuilder: (ctx, i) {
         final annee = annees[i];
         final gs = parAnnee[annee]!;
-        final brut = Calculs.totalBrut(gs, taux: widget.tauxHoraire,
+        final brutGardesAnnee = Calculs.totalBrut(gs, taux: widget.tauxHoraire,
             panier: widget.panierRepas, indDimanche: widget.indemnitesDimanche,
             montantIdaj: widget.montantIdaj);
+        int nbJoursCPAnnee = 0;
+        for (final g in gs.where((g) => g.isCongesPaies)) {
+          final debut = g.date;
+          final fin = g.cpDateFin ?? g.date;
+          nbJoursCPAnnee += fin.difference(debut).inDays + 1;
+        }
+        final brut = brutGardesAnnee + nbJoursCPAnnee * 7 * widget.tauxHoraire;
         final heures = Calculs.totalHeures(gs);
         final nbMois = _parMois(gs).length;
         return GestureDetector(
@@ -249,9 +267,18 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   // ── 2. Détail d'une année — mois en encadrés cliquables ──────────────────
   Widget _vueDetailAnnee() {
     final gs = (_parAnnee()[_annee] ?? []);
-    final brut = Calculs.totalBrut(gs, taux: widget.tauxHoraire,
+    final brutGardes = Calculs.totalBrut(gs, taux: widget.tauxHoraire,
         panier: widget.panierRepas, indDimanche: widget.indemnitesDimanche,
         montantIdaj: widget.montantIdaj);
+    // Ajoute l'indemnité CP (estimation 7h × taux par jour)
+    int totalJoursCP = 0;
+    for (final g in gs.where((g) => g.isCongesPaies)) {
+      final debut = g.date;
+      final fin = g.cpDateFin ?? g.date;
+      totalJoursCP += fin.difference(debut).inDays + 1;
+    }
+    final brutCP = totalJoursCP * 7 * widget.tauxHoraire;
+    final brut = brutGardes + brutCP;
     final heures = Calculs.totalHeures(gs);
     final parMois = _parMois(gs);
     final moisDansAnnee = parMois.keys.toList()..sort((a, b) => a.compareTo(b));
@@ -294,8 +321,18 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                     panier: widget.panierRepas, indDimanche: widget.indemnitesDimanche,
                     montantIdaj: widget.montantIdaj);
                 final hMois = Calculs.totalHeures(gm.where((g) => !g.isCongesPaies).toList());
-                final nbCp = gm.where((g) => g.isCongesPaies).fold(0, (s, g) => s + g.nbJoursCP);
-                final cpEstim = nbCp * 7 * widget.tauxHoraire;
+                // Compte les jours CP tombant dans CE mois uniquement
+                int nbCp = 0;
+                for (final g in gm.where((g) => g.isCongesPaies)) {
+                  final debut = g.date;
+                  final fin = g.cpDateFin ?? g.date;
+                  for (int di = 0; di <= fin.difference(debut).inDays; di++) {
+                    final j = debut.add(Duration(days: di));
+                    if (j.month == moisNum && j.year == int.parse(cle.split('-')[0])) nbCp++;
+                  }
+                }
+                final tauxJourCpEstim = ((152 * widget.tauxHoraire) + (17 * widget.tauxHoraire * 1.25)) / 26;
+                final cpEstim = nbCp * tauxJourCpEstim;
                 final brutTotal = brutMois + cpEstim;
                 return GestureDetector(
                   onTap: () => setState(() => _mois = cle),
@@ -383,98 +420,248 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     final gardes = [...(parMois[_mois!] ?? [])]
       ..sort((a, b) => a.date.compareTo(b.date));
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      itemCount: gardes.length,
-      itemBuilder: (ctx, i) {
-        final g = gardes[i];
-        final brut = g.isCongesPaies
-            ? 0.0
-            : Calculs.salaireBrutGarde(g,
-                taux: widget.tauxHoraire, panier: widget.panierRepas,
-                indDimanche: widget.indemnitesDimanche, montantIdaj: widget.montantIdaj);
-        return GestureDetector(
-          onTap: () => _ouvrirModification(g),
-          child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: AppTheme.cardDecoration(
-            borderColor: g.isCongesPaies ? const Color(0xFF1D9E75).withOpacity(0.5)
-                : g.jourNonTravaille ? Colors.orange.withOpacity(0.3)
-                : g.isDimancheOuFerie ? AppTheme.amber.withOpacity(0.3) : null,
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Row(children: [
-                Text(_dateCourte(g.date), style: const TextStyle(fontSize: 13,
-                    fontWeight: FontWeight.w500, color: Colors.white)),
-                const SizedBox(width: 8),
-                if (g.isCongesPaies)
-                  _badge('🏖️ CP · ${g.nbJoursCP}j',
-                      const Color(0xFF1D9E75).withOpacity(0.15),
-                      const Color(0xFF1D9E75))
-                else if (g.jourNonTravaille && g.isJourFerieSeulement)
-                  _badge('🎉 Férié — 7h payées', Colors.purple.withOpacity(0.15), Colors.purple)
-                else if (g.jourNonTravaille)
-                  _badge('Non travaillé', Colors.orange.withOpacity(0.15), Colors.orange)
-                else if (g.isDimancheOuFerie)
-                  _badge(g.nomJourFerie ?? 'Dim.', AppTheme.amber.withOpacity(0.15), AppTheme.amber)
-                else if (g.heuresNuitMinutes > 0)
-                  _badge('Nuit', AppTheme.blue.withOpacity(0.15), AppTheme.blue)
-                else
-                  _badge(_dateCourte(g.date), AppTheme.green.withOpacity(0.15), AppTheme.green),
+    final partsM = _mois!.split('-');
+    final moisNum = int.parse(partsM[1]);
+    final anneeNum = int.parse(partsM[0]);
+
+    // Stats header
+    final gardesTravaillees = gardes.where((g) => !g.isCongesPaies && !g.jourNonTravaille).toList().cast<Garde>();
+    final totalH = Calculs.totalHeures(gardesTravaillees);
+    final brutGardes = Calculs.totalBrut(gardesTravaillees,
+        taux: widget.tauxHoraire, panier: widget.panierRepas,
+        indDimanche: widget.indemnitesDimanche, montantIdaj: widget.montantIdaj);
+    int joursCP = 0;
+    for (final g in gardes.where((g) => g.isCongesPaies)) {
+      final debut = g.date; final fin = g.cpDateFin ?? g.date;
+      for (int i = 0; i <= fin.difference(debut).inDays; i++) {
+        final j = debut.add(Duration(days: i));
+        if (j.month == moisNum && j.year == anneeNum) joursCP++;
+      }
+    }
+    final tauxJourCP = ((152 * widget.tauxHoraire) + (17 * widget.tauxHoraire * 1.25)) / 26;
+    final brutCP = joursCP * tauxJourCP;
+    final brutTotal = brutGardes + brutCP;
+    final netTotal = Calculs.netEstime(brutTotal);
+    final nbDim = gardesTravaillees.where((g) => g.isDimancheOuFerie).length;
+    final moisNoms = ['','jan','fév','mars','avr','mai','juin','juil','août','sep','oct','nov','déc'];
+    final moisLongs = ['','Janvier','Février','Mars','Avril','Mai','Juin',
+        'Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+    return Column(children: [
+      // ── Header ────────────────────────────────────────────────────
+      Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+        decoration: BoxDecoration(
+          color: AppTheme.bgCard,
+          border: Border(bottom: BorderSide(color: AppTheme.bgCardBorder)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            GestureDetector(
+              onTap: () => setState(() => _mois = null),
+              child: Row(children: [
+                Icon(Icons.chevron_left, size: 16, color: AppTheme.blueAccent),
+                Text('$anneeNum', style: TextStyle(fontSize: 12, color: AppTheme.blueAccent)),
               ]),
-              Row(children: [
-                if (!g.isCongesPaies)
-                  Text('${brut.toStringAsFixed(0)} €', style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w500,
-                      color: g.jourNonTravaille && g.isJourFerieSeulement
-                          ? Colors.purple
-                          : AppTheme.green)),
-                const SizedBox(width: 8),
-                Icon(Icons.edit_outlined, size: 14, color: AppTheme.blueAccent),
-              ]),
-            ]),
-            if (g.isCongesPaies) ...[
-              const SizedBox(height: 4),
-              Text(
-                g.cpDateFin != null
-                    ? 'Période : ${g.date.day}/${g.date.month} → ${g.cpDateFin!.day}/${g.cpDateFin!.month}/${g.cpDateFin!.year}'
-                    : 'Journée CP — ${g.date.day}/${g.date.month}/${g.date.year}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF1D9E75)),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppTheme.bgSecondary,
+                borderRadius: BorderRadius.circular(8),
               ),
-            ] else if (!g.jourNonTravaille) ...[
-              const SizedBox(height: 4),
-              Text('${g.heureDebut.hour}h${g.heureDebut.minute.toString().padLeft(2, '0')} → ${g.heureFin.hour}h${g.heureFin.minute.toString().padLeft(2, '0')} · ${Calculs.formatHeures(g.dureeHeures)}',
-                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
-              if (g.pauseMinutes > 0)
-                Text('Pause : ${Calculs.formatHeures(g.pauseMinutes / 60)}',
-                    style: TextStyle(fontSize: 10, color: AppTheme.amber.withOpacity(0.8))),
-              if (g.hasIDAJ)
-                Text('IDAJ applicable', style: TextStyle(fontSize: 10,
-                    color: AppTheme.red, fontWeight: FontWeight.w500)),
-            ],
-            if (g.collegue != null) ...[
-              const SizedBox(height: 3),
-              Text('👤 ${g.collegue}', style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-            ],
-            if (g.vehiculeUtilise != null)
-              Text('🚗 ${g.vehiculeUtilise}', style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-            if (g.kmDomicileTravail > 0)
-              Text('📍 ${g.kmDomicileTravail.toStringAsFixed(0)} km dom-travail',
+              child: Text('${gardes.length} garde${gardes.length > 1 ? "s" : ""}',
                   style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-            if (g.achats.isNotEmpty) ...[
-              const SizedBox(height: 3),
-              for (final a in g.achats)
-                Text('🛒 ${a.intitule} — ${a.montant.toStringAsFixed(2)} €',
-                    style: TextStyle(fontSize: 10, color: AppTheme.colorAmber)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text('${moisLongs[moisNum]} $anneeNum',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+          const SizedBox(height: 8),
+          Row(children: [
+            _statHdr(Calculs.formatHeures(totalH), 'travaillées', AppTheme.colorBlue),
+            const SizedBox(width: 16),
+            _statHdr('${brutTotal.toStringAsFixed(0)} €', 'brut', AppTheme.colorGreen),
+            const SizedBox(width: 16),
+            _statHdr('${netTotal.toStringAsFixed(0)} €', 'net (~78%)', AppTheme.colorGreen),
+            if (nbDim > 0) ...[
+              const SizedBox(width: 16),
+              _statHdr('$nbDim dim.', 'majorés', const Color(0xFFBA7517)),
             ],
           ]),
-        ),
-        );
-      },
-    );
+        ]),
+      ),
+
+      // ── Timeline ──────────────────────────────────────────────────
+      Expanded(child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        itemCount: gardes.length,
+        itemBuilder: (ctx, i) {
+          final g = gardes[i];
+          final isLast = i == gardes.length - 1;
+          final brut = g.isCongesPaies || g.jourNonTravaille
+              ? (g.jourNonTravaille && g.isJourFerieSeulement ? widget.tauxHoraire * 7 : 0.0)
+              : Calculs.salaireBrutGarde(g,
+                  taux: widget.tauxHoraire, panier: widget.panierRepas,
+                  indDimanche: widget.indemnitesDimanche, montantIdaj: widget.montantIdaj);
+
+          // Couleurs selon type
+          Color dayBg, dayText, cardBg, cardBorder, lineColor, brutColor;
+          String badgeLabel;
+          if (g.isCongesPaies) {
+            dayBg = const Color(0xFF9FE1CB); dayText = const Color(0xFF085041);
+            cardBg = const Color(0xFFE1F5EE); cardBorder = const Color(0xFF1D9E75);
+            lineColor = const Color(0xFF9FE1CB); brutColor = const Color(0xFF0F6E56);
+            badgeLabel = '🏖️ CP';
+          } else if (g.jourNonTravaille && g.isJourFerieSeulement) {
+            dayBg = const Color(0xFFCECBF6); dayText = const Color(0xFF26215C);
+            cardBg = const Color(0xFFEEEDFE); cardBorder = const Color(0xFF7F77DD);
+            lineColor = const Color(0xFFCECBF6); brutColor = const Color(0xFF534AB7);
+            badgeLabel = '🎉 Férié';
+          } else if (g.jourNonTravaille) {
+            dayBg = const Color(0xFFFAC775); dayText = const Color(0xFF412402);
+            cardBg = const Color(0xFFFAEEDA); cardBorder = const Color(0xFFBA7517);
+            lineColor = const Color(0xFFFAC775); brutColor = AppTheme.colorAmber;
+            badgeLabel = 'Non travaillé';
+          } else if (g.isDimancheOuFerie) {
+            dayBg = const Color(0xFFFDE68A); dayText = const Color(0xFF854F0B);
+            cardBg = const Color(0xFFFFFBEB); cardBorder = const Color(0xFFBA7517);
+            lineColor = const Color(0xFFFDE68A); brutColor = const Color(0xFFBA7517);
+            badgeLabel = g.nomJourFerie ?? 'Dimanche';
+          } else if (g.heuresNuitMinutes > 0) {
+            dayBg = const Color(0xFFAFA9EC); dayText = const Color(0xFF26215C);
+            cardBg = const Color(0xFFF5F4FE); cardBorder = const Color(0xFF7F77DD);
+            lineColor = const Color(0xFFAFA9EC); brutColor = const Color(0xFF0F6E56);
+            badgeLabel = 'Nuit';
+          } else {
+            dayBg = const Color(0xFFE6F1FB); dayText = const Color(0xFF185FA5);
+            cardBg = AppTheme.bgCard; cardBorder = AppTheme.bgCardBorder;
+            lineColor = const Color(0xFFE6F1FB); brutColor = const Color(0xFF0F6E56);
+            badgeLabel = 'Garde';
+          }
+
+          return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Colonne date + fil
+            SizedBox(width: 40, child: Column(children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(color: dayBg, borderRadius: BorderRadius.circular(9)),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text('${g.date.day}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: dayText, height: 1)),
+                  Text(moisNoms[g.date.month], style: TextStyle(fontSize: 8, color: dayText.withOpacity(0.7))),
+                ]),
+              ),
+              if (!isLast)
+                Container(width: 1, height: 20, color: lineColor, margin: const EdgeInsets.only(top: 3)),
+            ])),
+            const SizedBox(width: 10),
+
+            // Carte
+            Expanded(child: Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: GestureDetector(
+                onTap: () => _ouvrirModification(g),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: cardBorder.withOpacity(0.5)),
+                  ),
+                  child: Row(children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      // Badge type + alerte conflit
+                      Builder(builder: (bCtx) {
+                        // Vérifie si cette garde chevauche un CP ou vice versa
+                        final gDate = DateTime(g.date.year, g.date.month, g.date.day);
+                        final hasConflit = !g.isCongesPaies && !g.jourNonTravaille && gardes.any((other) {
+                          if (!other.isCongesPaies) return false;
+                          final debut = DateTime(other.date.year, other.date.month, other.date.day);
+                          final fin = other.cpDateFin != null
+                              ? DateTime(other.cpDateFin!.year, other.cpDateFin!.month, other.cpDateFin!.day)
+                              : debut;
+                          return !gDate.isBefore(debut) && !gDate.isAfter(fin);
+                        });
+                        return Row(children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: dayBg, borderRadius: BorderRadius.circular(4)),
+                            child: Text(badgeLabel, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: dayText)),
+                          ),
+                          if (hasConflit) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.red.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                              child: const Text('⚠️ Conflit CP', style: TextStyle(fontSize: 8, color: Colors.red, fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ]);
+                      }),
+                      const SizedBox(height: 3),
+                      // Horaires / CP info
+                      if (g.isCongesPaies)
+                        Builder(builder: (ctx) {
+                          final debut = g.date; final fin = g.cpDateFin ?? g.date;
+                          if (debut.month != fin.month || debut.year != fin.year) {
+                            if (debut.month == moisNum && debut.year == anneeNum) {
+                              final dernierJour = DateTime(debut.year, debut.month + 1, 0);
+                              final jours = dernierJour.difference(debut).inDays + 1;
+                              return Text('${debut.day} au ${dernierJour.day} ${moisNoms[debut.month]} · $jours j',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: dayText));
+                            } else {
+                              return Text('01 au ${fin.day} ${moisNoms[fin.month]} · ${fin.day} j',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: dayText));
+                            }
+                          }
+                          return Text('${debut.day}/${debut.month} → ${fin.day}/${fin.month} · ${g.nbJoursCP}j',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: dayText));
+                        })
+                      else if (!g.jourNonTravaille)
+                        Text('${g.heureDebut.hour}h${g.heureDebut.minute.toString().padLeft(2,'0')} → ${g.heureFin.hour}h${g.heureFin.minute.toString().padLeft(2,'0')} · ${Calculs.formatHeures(g.dureeHeures)}',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+                      // Détails
+                      Wrap(spacing: 8, children: [
+                        if (g.pauseMinutes > 0)
+                          Text('Pause ${Calculs.formatHeures(g.pauseMinutes/60)}',
+                              style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                        if (g.hasIDAJ)
+                          Text('IDAJ', style: TextStyle(fontSize: 10, color: AppTheme.colorRed)),
+                        if (g.collegue != null)
+                          Text('👤 ${g.collegue}', style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                        if (g.vehiculeUtilise != null)
+                          Text('🚗 ${g.vehiculeUtilise}', style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                        for (final a in g.achats)
+                          Text('🛒 ${a.intitule} ${a.montant.toStringAsFixed(2)}€',
+                              style: TextStyle(fontSize: 10, color: AppTheme.colorAmber)),
+                        if (g.primeLongueDistance > 0)
+                          Text('🚌 ${g.primeLongueDistance.toStringAsFixed(0)}€',
+                              style: const TextStyle(fontSize: 10, color: Colors.lightBlue)),
+                      ]),
+                    ])),
+                    const SizedBox(width: 8),
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      if (!g.isCongesPaies || brut > 0)
+                        Text('${brut.toStringAsFixed(0)} €',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: brutColor)),
+                      const SizedBox(height: 4),
+                      Icon(Icons.edit_outlined, size: 13, color: AppTheme.textTertiary),
+                    ]),
+                  ]),
+                ),
+              ),
+            )),
+          ]);
+        },
+      )),
+    ]);
   }
+
+  Widget _statHdr(String val, String lbl, Color color) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text(val, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: color)),
+    Text(lbl, style: TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
+  ]);
 
   Widget _badge(String label, Color bg, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

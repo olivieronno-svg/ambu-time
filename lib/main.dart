@@ -1,5 +1,7 @@
-
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'utils/ad_service.dart';
+import 'widgets/banner_ad_widget.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/accueil_screen.dart';
 import 'screens/saisie_garde_screen.dart';
@@ -105,30 +107,58 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   int _modeCp = 0;
   DateTime? _debutQuatorzaine;
   bool _chargement = true;
+  bool _isPro = false;
+  int? _compteurNavigation = 0;
   Garde? _gardeAModifier;
   final List<Garde> _gardes = [];
 
   @override
-  void initState() { super.initState(); _chargerDonnees(); }
+  void initState() {
+    super.initState();
+    _chargerDonnees();
+    _chargerStatutPro();
+    AdService.initialiser();
+    AdService.chargerInterstitielle();
+  }
+
+  Future<void> _chargerStatutPro() async {
+    final pro = await PurchaseService.isPro();
+    final tester = await Storage.isTesterPro();
+    if (mounted) setState(() => _isPro = pro || tester);
+  }
 
   Future<void> _chargerDonnees() async {
-    final gardes = await Storage.chargerGardes();
-    final params = await Storage.chargerParametres();
-    setState(() {
-      _gardes.addAll(gardes);
-      _tauxHoraire = params['taux'] as double;
-      _panierRepas = params['panier'] as double;
-      _indemnitesDimanche = params['dimanche'] as double;
-      _montantIdaj = params['idaj'] as double;
-      _debutQuatorzaine = params['debutQuatorzaine'] as DateTime?;
-      _primes = params['primes'] as List<PrimeMensuelle>;
-      _impotSource = params['impotSource'] as double;
-      _kmDomicileTravail = params['kmDomicileTravail'] as double;
-      _poste = params['poste'] as String;
-      _congesAcquisAvant = params['congesAcquisAvant'] as double? ?? 0.0;
-      _modeCp = params['modeCp'] as int? ?? 0;
-      _chargement = false;
-    });
+    try {
+      final gardes = await Storage.chargerGardes();
+      final params = await Storage.chargerParametres();
+      if (!mounted) return;
+      setState(() {
+        _gardes.addAll(gardes);
+        _tauxHoraire = (params['taux'] as num?)?.toDouble() ?? _tauxHoraire;
+        _panierRepas = (params['panier'] as num?)?.toDouble() ?? _panierRepas;
+        _indemnitesDimanche = (params['dimanche'] as num?)?.toDouble() ?? _indemnitesDimanche;
+        _montantIdaj = (params['idaj'] as num?)?.toDouble() ?? _montantIdaj;
+        _debutQuatorzaine = params['debutQuatorzaine'] as DateTime?;
+        _primes = params['primes'] as List<PrimeMensuelle>? ?? _primes;
+        _impotSource = (params['impotSource'] as num?)?.toDouble() ?? _impotSource;
+        _kmDomicileTravail = (params['kmDomicileTravail'] as num?)?.toDouble() ?? _kmDomicileTravail;
+        _poste = params['poste'] as String? ?? _poste;
+        _congesAcquisAvant = (params['congesAcquisAvant'] as num?)?.toDouble() ?? 0.0;
+        _modeCp = params['modeCp'] as int? ?? 0;
+        _chargement = false;
+      });
+    } catch (e, stack) {
+      debugPrint('Erreur chargement données : $e\n$stack');
+      if (!mounted) return;
+      setState(() => _chargement = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erreur au chargement des données. Certaines gardes peuvent être manquantes.'),
+          duration: Duration(seconds: 5),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _ajouterGarde(Garde g) {
@@ -178,6 +208,13 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
 
   void _navigateTo(int index) {
     if (index == _currentIndex) return;
+    if (!_isPro) {
+      _compteurNavigation = (_compteurNavigation ?? 0) + 1;
+      if (_compteurNavigation! >= 3) {
+        AdService.afficherInterstitielle();
+        _compteurNavigation = 0;
+      }
+    }
     setState(() { _prevIndex = _currentIndex; _currentIndex = index; });
   }
 
@@ -266,6 +303,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
 
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
+
       body: SafeArea(
         child: Row(
           children: [

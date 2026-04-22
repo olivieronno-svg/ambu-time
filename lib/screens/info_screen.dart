@@ -1,4 +1,5 @@
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
@@ -25,6 +26,7 @@ class _InfoScreenState extends State<InfoScreen> {
   }
 
   void _onVersionTap() {
+    if (!kDebugMode) return;
     _tapCount++;
     if (_tapCount >= 5) { _tapCount = 0; _afficherDialogCode(); }
   }
@@ -43,7 +45,7 @@ class _InfoScreenState extends State<InfoScreen> {
             child: Text('Annuler', style: TextStyle(color: AppTheme.textSecondary))),
         TextButton(
           onPressed: () async {
-            if (codeCtrl.text.trim() == 'AMBUTEST2026') {
+            if (kDebugMode && codeCtrl.text.trim() == 'AMBUTEST2026') {
               await Storage.activerModeTester();
               setState(() => _isPro = true);
               Navigator.pop(ctx);

@@ -1,3 +1,4 @@
+
 class PlannedGarde {
   final String id;
   DateTime date;
@@ -8,6 +9,7 @@ class PlannedGarde {
   String? notes;
   String? collegue;
   bool confirme;
+  String typeGarde; // 'UPH Jour', 'UPH Nuit', 'Art 80'
 
   PlannedGarde({
     required this.id,
@@ -19,6 +21,7 @@ class PlannedGarde {
     this.notes,
     this.collegue,
     this.confirme = false,
+    this.typeGarde = 'UPH Jour',
   });
 
   String get heuresLabel =>
@@ -49,6 +52,7 @@ class PlannedGarde {
     'notes': notes,
     'collegue': collegue,
     'confirme': confirme,
+    'typeGarde': typeGarde,
   };
 
   factory PlannedGarde.fromMap(Map<String, dynamic> m) => PlannedGarde(
@@ -61,5 +65,6 @@ class PlannedGarde {
     notes: m['notes'],
     collegue: m['collegue'],
     confirme: m['confirme'] ?? false,
+    typeGarde: m['typeGarde'] ?? 'UPH Jour',
   );
 }

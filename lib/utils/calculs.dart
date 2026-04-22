@@ -58,7 +58,7 @@ class Calculs {
     double indaj = idaj(g, taux);
     double panierGarde = g.panierRepasGarde;
     double indDim = g.isDimancheOuFerie ? indDimanche : 0;
-    return base + majNuit + majDim + indaj + panierGarde + indDim;
+    return base + majNuit + majDim + indaj + panierGarde + indDim + g.primeLongueDistance;
   }
 
   static double totalBrut(
@@ -157,8 +157,9 @@ class Calculs {
   }
 
   static String formatHeures(double heures) {
-    int h = heures.floor();
-    int m = ((heures - h) * 60).round();
+    final totalMinutes = (heures * 60).round();
+    final h = totalMinutes ~/ 60;
+    final m = totalMinutes % 60;
     return '${h}h${m.toString().padLeft(2, '0')}';
   }
 }

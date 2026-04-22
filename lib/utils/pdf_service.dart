@@ -25,6 +25,9 @@ class PdfService {
     'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre'
   ];
 
+  static String _nomMois(int mois) =>
+      (mois >= 1 && mois <= 12) ? _moisNoms[mois] : '?';
+
   // ── Export mensuel ────────────────────────────────────────────────────────
   static Future<void> exporterMois({
     required List<Garde> gardes,
@@ -62,7 +65,7 @@ class PdfService {
 
     await Printing.layoutPdf(
       onLayout: (fmt) async => pdf.save(),
-      name: 'EXPORT_PDF_${_moisNoms[mois]}_$annee.pdf',
+      name: 'EXPORT_PDF_${_nomMois(mois)}_$annee.pdf',
     );
   }
 
@@ -81,10 +84,10 @@ class PdfService {
             pw.Text('Ambu Time',
                 style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold,
                     color: _noir)),
-            pw.Text('Releve mensuel - ${_moisNoms[mois]} $annee',
+            pw.Text('Releve mensuel - ${_nomMois(mois)} $annee',
                 style: pw.TextStyle(fontSize: 11, color: _grisTexte)),
           ]),
-          pw.Text('${_moisNoms[mois]} $annee',
+          pw.Text('${_nomMois(mois)} $annee',
               style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold,
                   color: _noir)),
         ],
@@ -132,7 +135,7 @@ class PdfService {
 
     final cards = [
       _resumeCard('Salaire brut', '${brutAvecPrimes.toStringAsFixed(2)} EUR', _vert),
-      _resumeCard('Net estime', '${net.toStringAsFixed(2)} EUR', _teal),
+      _resumeCard('Net estime (~78%)', '${net.toStringAsFixed(2)} EUR', _teal),
       if (impotSource > 0)
         _resumeCard('Net apres impot', '${netFinal.toStringAsFixed(2)} EUR', _bleu),
       _resumeCard('Heures travaillees', Calculs.formatHeures(heures), _violet),
@@ -266,7 +269,7 @@ class PdfService {
     final totalNuit = gardes.fold(0.0, (s, g) => s + Calculs.heuresNuit(g));
     final totalMajNuit = gardes.fold(0.0, (s, g) => s + Calculs.majorationNuit(g, taux));
     final totalMajDim = gardes.fold(0.0, (s, g) => s + Calculs.majorationDimanche(g, taux));
-    final totalIdaj = gardes.fold(0.0, (s, g) => s + Calculs.idaj(g, idaj));
+    final totalIdaj = gardes.fold(0.0, (s, g) => s + Calculs.idaj(g, taux));
     final nbDim = gardes.where((g) => g.isDimancheOuFerie).length;
     final totalPaniers = gardes.fold(0.0, (s, g) => s + g.panierRepasGarde);
     final totalAchats = gardes.fold(0.0, (s, g) => s + g.totalAchats);

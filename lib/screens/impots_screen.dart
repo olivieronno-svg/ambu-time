@@ -109,6 +109,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
 
     // ── Total achats de l'année ────────────────────────────────────────────
     final totalAchatsAnnee = gardesAnnee.fold(0.0, (s, g) => s + g.totalAchats);
+    final totalPrimesLongueDistance = gardesAnnee.fold(0.0, (s, g) => s + g.primeLongueDistance);
 
     // ── Total km de l'année ───────────────────────────────────────────────
     final nbJoursTravailles = gardesAnnee.where((g) => !g.jourNonTravaille).length;
@@ -127,10 +128,11 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
     final motsCle_carbu = ['essence', 'carburant', 'gasoil', 'diesel', 'plein', 'sp95', 'sp98'];
 
     double totalRepas = 0, totalCarbu = 0, totalMateriel = 0;
+    double totalLongueDist = 0;
     // Par mois : {mois: {repas, carbu, materiel}}
     final Map<int, Map<String, double>> fraisParMois = {};
     for (int m = 1; m <= 12; m++) {
-      fraisParMois[m] = {'repas': 0, 'carbu': 0, 'materiel': 0};
+      fraisParMois[m] = {'repas': 0, 'carbu': 0, 'materiel': 0, 'longue': 0};
     }
 
     for (final g in gardesAnnee) {
@@ -148,6 +150,11 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
           totalMateriel += a.montant;
           fraisParMois[mois]!['materiel'] = (fraisParMois[mois]!['materiel']! + a.montant);
         }
+      }
+      // Prime longue distance par mois
+      if (g.primeLongueDistance > 0) {
+        totalLongueDist += g.primeLongueDistance;
+        fraisParMois[g.date.month]!['longue'] = (fraisParMois[g.date.month]!['longue']! + g.primeLongueDistance);
       }
     }
 
@@ -217,6 +224,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                             if (r > 0) _fraisBadge('🍽 ${r.toStringAsFixed(2)}€', AppTheme.green),
                             if (c > 0) _fraisBadge('⛽ ${c.toStringAsFixed(2)}€', Colors.orange),
                             if (mt > 0) _fraisBadge('🔧 ${mt.toStringAsFixed(2)}€', AppTheme.blueAccent),
+                            if ((fraisParMois[m]!['longue']! > 0)) _fraisBadge('🚌 ${fraisParMois[m]!['longue']!.toStringAsFixed(2)}€', Colors.lightBlue),
                           ])),
                           Text('${total.toStringAsFixed(2)} €',
                               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,

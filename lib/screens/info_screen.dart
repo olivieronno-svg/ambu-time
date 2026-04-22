@@ -1,5 +1,4 @@
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
@@ -14,7 +13,6 @@ class InfoScreen extends StatefulWidget {
 
 class _InfoScreenState extends State<InfoScreen> {
   bool _isPro = false;
-  int _tapCount = 0;
 
   @override
   void initState() { super.initState(); _verifierPro(); }
@@ -25,50 +23,7 @@ class _InfoScreenState extends State<InfoScreen> {
     setState(() => _isPro = pro || tester);
   }
 
-  void _onVersionTap() {
-    if (!kDebugMode) return;
-    _tapCount++;
-    if (_tapCount >= 5) { _tapCount = 0; _afficherDialogCode(); }
-  }
-
-  void _afficherDialogCode() {
-    final codeCtrl = TextEditingController();
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: AppTheme.bgSecondaryDark,
-      title: Text('Code testeur', style: TextStyle(color: AppTheme.textPrimary, fontSize: 15)),
-      content: TextField(controller: codeCtrl, autofocus: true, obscureText: true,
-        style: TextStyle(color: AppTheme.textPrimary),
-        decoration: InputDecoration(hintText: 'Entrez le code',
-            hintStyle: TextStyle(color: AppTheme.textTertiary))),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx),
-            child: Text('Annuler', style: TextStyle(color: AppTheme.textSecondary))),
-        TextButton(
-          onPressed: () async {
-            if (kDebugMode && codeCtrl.text.trim() == 'AMBUTEST2026') {
-              await Storage.activerModeTester();
-              setState(() => _isPro = true);
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Row(children: [
-                  const Icon(Icons.check_circle, color: Colors.white, size: 18),
-                  const SizedBox(width: 8),
-                  const Text('Mode testeur Pro activé !'),
-                ]),
-                backgroundColor: AppTheme.colorGreen,
-              ));
-            } else {
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Code incorrect')));
-            }
-          },
-          child: Text('Valider', style: TextStyle(color: AppTheme.blueAccent,
-              fontWeight: FontWeight.w600)),
-        ),
-      ],
-    ));
-  }
+  void _onVersionTap() {}
 
   Future<void> _ouvrirLien(String url) async {
     final uri = Uri.parse(url);

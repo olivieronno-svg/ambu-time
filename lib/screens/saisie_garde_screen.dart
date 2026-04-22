@@ -994,7 +994,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               ));
               return;
             }
-            // CP-on-garde → alerte orale + on sauvegarde quand même
+            // CP-on-garde → alerte orale + demande confirmation
             final gardesConflits = widget.toutesGardes.where((g) {
               if (g.isCongesPaies || g.jourNonTravaille) return false;
               if (estModif && g.id == widget.gardeAModifier!.id) return false;
@@ -1003,7 +1003,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             }).toList();
             if (gardesConflits.isNotEmpty) {
               final nbG = gardesConflits.length;
-              await _parler('Attention, ${nbG > 1 ? "$nbG gardes sont" : "une garde est"} déjà enregistrée${nbG > 1 ? "s" : ""} sur cette période. Congé enregistré quand même.');
+              setState(() => _etatConv = 'confirmer_cp_garde');
+              await _parler('Attention, ${nbG > 1 ? "$nbG gardes sont" : "une garde est"} déjà enregistrée${nbG > 1 ? "s" : ""} sur cette période. Voulez-vous enregistrer le congé quand même ?');
+              return;
             }
           }
           _enregistrerGarde();
@@ -1055,6 +1057,22 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             _cpDateFin = null;
           });
           await _parler('D\'accord, garde annulée. Formulaire réinitialisé.');
+        }
+        break;
+
+      case 'confirmer_cp_garde':
+        if (t.contains('oui') || t.contains('quand meme') || t.contains('confirme') || t.contains('enregistre')) {
+          setState(() => _etatConv = '');
+          _enregistrerGarde();
+          await _parler('Congés payés enregistrés !');
+          Future.delayed(const Duration(milliseconds: 2000), () {
+            if (mounted) _reinitialiserFormulaire();
+          });
+        } else if (t.contains('non') || t.contains('annule')) {
+          _reinitialiserFormulaire();
+          await _parler('D\'accord, enregistrement annulé.');
+        } else {
+          await _parler('Voulez-vous enregistrer le congé quand même ? Dites oui ou non.');
         }
         break;
     }

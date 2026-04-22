@@ -107,10 +107,6 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
     // Impôt annuel estimé (projection 12 mois)
     final impotAnnuelEstime = impotMensuel * 12;
 
-    // ── Total achats de l'année ────────────────────────────────────────────
-    final totalAchatsAnnee = gardesAnnee.fold(0.0, (s, g) => s + g.totalAchats);
-    final totalPrimesLongueDistance = gardesAnnee.fold(0.0, (s, g) => s + g.primeLongueDistance);
-
     // ── Total km de l'année ───────────────────────────────────────────────
     final nbJoursTravailles = gardesAnnee.where((g) => !g.jourNonTravaille).length;
     // Si gardes ont km enregistré → on cumule, sinon on utilise le param × nb jours
@@ -128,7 +124,6 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
     final motsCle_carbu = ['essence', 'carburant', 'gasoil', 'diesel', 'plein', 'sp95', 'sp98'];
 
     double totalRepas = 0, totalCarbu = 0, totalMateriel = 0;
-    double totalLongueDist = 0;
     // Par mois : {mois: {repas, carbu, materiel}}
     final Map<int, Map<String, double>> fraisParMois = {};
     for (int m = 1; m <= 12; m++) {
@@ -153,7 +148,6 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
       }
       // Prime longue distance par mois
       if (g.primeLongueDistance > 0) {
-        totalLongueDist += g.primeLongueDistance;
         fraisParMois[g.date.month]!['longue'] = (fraisParMois[g.date.month]!['longue']! + g.primeLongueDistance);
       }
     }

@@ -1,4 +1,4 @@
-
+﻿
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -70,7 +70,6 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
   bool _speechAvailable = false;
   bool _ecoute = false;
   bool _ttsActif = false;
-  bool _ecouteRelancee = false; // évite double relance
   String _texteVocal = '';
   String _etatConv = ''; // état courant de la conversation
   String _articleEnAttente = ''; // article dont on attend le prix
@@ -109,7 +108,6 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       if (mounted) {
         setState(() => _ttsActif = false);
         if (_etatConv.isNotEmpty) {
-          _ecouteRelancee = true; // empêche le timer de relancer
           Future.delayed(const Duration(milliseconds: 600), _ecouterReponse);
         }
       }
@@ -256,17 +254,6 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         (t.contains('non') && (t.contains('ca') || t.contains('pas') || t.contains('correct')));
 
     if (estCorrection) {
-      // Message d'excuse et reprise
-      final questionsReprise = {
-        'date': 'Pour quelle date était cette garde ?',
-        'heures': 'Quels sont les horaires de votre garde ?',
-        'pause': 'Avez-vous fait une coupure durant cette garde ?',
-        'duree_pause': 'Quelle était la durée de la coupure ?',
-        'achats': 'Quels ont été vos achats divers ?',
-        'autres_achats': 'Avez-vous d\'autres achats ?',
-        'confirmer': 'Souhaitez-vous confirmer l\'enregistrement de cette garde ?',
-      };
-      final questionActuelle = questionsReprise[_etatConv] ?? 'Pouvez-vous répéter ?';
       // Détecte si la phrase contient des heures (Xh à Yh / de X à Y)
       String tCorr = t.replaceAll('heures','h').replaceAll('heure','h')
           .replaceAll('à','a').replaceAll('de ','');
@@ -483,13 +470,6 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         return;
       }
       final avant = _achats.length;
-
-      // Extrait le nom de l'article pour la réponse
-      String nomArticle = '';
-      final cmdRegex = RegExp(r'(?:efface[rz]?|retire[rz]?|enl[eè]ve[rz]?|supprime[rz]?)\s+(?:le|la|les|l|un|une|du|de la|des|moi le|moi la|moi l)?\s*([a-zA-Z\u00c0-\u024f]+)');
-      final mCmd = cmdRegex.firstMatch(t);
-      if (mCmd != null) nomArticle = mCmd.group(1) ?? '';
-
       _analyserVoix(rep);
 
       if (_achats.length < avant) {
@@ -543,7 +523,6 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           setState(() { _isCongesPaies = true; _jourNonTravaille = false; });
           // Détecte si une date de début est déjà dans la phrase
           final dateDebutCP = _parseDate(rep);
-          final now2 = DateTime.now();
           final dateDejaPresente = tDate.contains('aujourd') || tDate.contains('hier') ||
               tDate.contains('lundi') || tDate.contains('mardi') || tDate.contains('mercredi') ||
               tDate.contains('jeudi') || tDate.contains('vendredi') || tDate.contains('samedi') ||
@@ -641,7 +620,6 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             if (autre >= 0) heuresDate.add([autre, 0]);
           }
         }
-        final now = DateTime.now();
         final moisN = ['','janvier','fevrier','mars','avril','mai','juin',
             'juillet','aout','septembre','octobre','novembre','decembre'];
         final jour = _date.day == 1 ? 'premier' : '${_date.day}';
@@ -669,8 +647,6 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a');
         // "8 h 20" → "8h20" puis sépare, "20 h" → "20h"
         tH = tH.replaceAllMapped(RegExp(r'(\d{1,2})\s+h'), (m) => '${m.group(1)}h');
-        // Cherche tous les nombres (heures et minutes)
-        final allNums = RegExp(r'(\d{1,2})h?(\d{2})?').allMatches(tH).toList();
         final heures = <List<int>>[];
         for (final m in RegExp(r'(\d{1,2})h(\d{2})?').allMatches(tH)) {
           final h = int.tryParse(m.group(1) ?? '') ?? -1;
@@ -1066,25 +1042,12 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     }
   }
 
-  Future<void> _parlerRecap() async {
-    // Plus utilisé dans ce flux mais gardé pour compatibilité
-    await _parler('Merci, est-ce tout ?');
-  }
-
-
   void _arreterEcoute() {
     // Arrête uniquement l'écoute — NE réinitialise PAS la conversation
     _tts.stop();
     _speech.stop();
     setState(() { _ecoute = false; _ttsActif = false; _texteVocal = ''; });
     // _etatConv conservé pour pouvoir reprendre
-  }
-
-  void _arreterTout() {
-    // Arrêt complet avec réinitialisation (bouton annuler explicite)
-    _tts.stop();
-    _speech.stop();
-    setState(() { _ecoute = false; _ttsActif = false; _etatConv = ''; _texteVocal = ''; });
   }
 
   // Vérifie chevauchement CP — retourne true si conflit (et affiche message)
@@ -1544,8 +1507,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           _isCongesPaies = false; _cpDateFin = null;
         });
         champsRemplis.add(hUniq.length >= 2
-          ? 'garde ${nouvellDate!.day}/${nouvellDate!.month} ${dh}h→${fh}h'
-          : 'nouvelle garde ${nouvellDate!.day}/${nouvellDate!.month}');
+          ? 'garde ${nouvellDate.day}/${nouvellDate.month} ${dh}h→${fh}h'
+          : 'nouvelle garde ${nouvellDate.day}/${nouvellDate.month}');
       } else {
         setState(() => _date = nouvellDate!);
         champsRemplis.add('date');

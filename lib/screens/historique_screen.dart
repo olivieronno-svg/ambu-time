@@ -663,9 +663,4 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     Text(lbl, style: TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
   ]);
 
-  Widget _badge(String label, Color bg, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
-    child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: color)),
-  );
 }

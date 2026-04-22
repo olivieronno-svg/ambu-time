@@ -7,16 +7,6 @@ import '../models/planned_garde.dart';
 import '../utils/calculs.dart';
 import '../app_theme.dart';
 
-class _Note {
-  final String id;
-  String titre;
-  String contenu;
-  _Note({required this.id, required this.titre, required this.contenu});
-  Map<String, dynamic> toMap() => {'id': id, 'titre': titre, 'contenu': contenu};
-  factory _Note.fromMap(Map<String, dynamic> m) =>
-      _Note(id: m['id'], titre: m['titre'], contenu: m['contenu'] ?? '');
-}
-
 class AccueilScreen extends StatefulWidget {
   final List<Garde> gardes;
   final List<Garde> gardesQuatorzaine;
@@ -42,21 +32,15 @@ class AccueilScreen extends StatefulWidget {
 }
 
 class _AccueilScreenState extends State<AccueilScreen> {
-  List<_Note> _notes = [];
   List<PlannedGarde> _planning = [];
   DateTime _calendarMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
-  static const _keyNotes = 'app_notes_v1';
   static const _keyPlanning = 'app_planning_v1';
-  String _lettreActive = 'A';
-  final ScrollController _notesScroll = ScrollController();
-
-  static const _alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
   @override
-  void initState() { super.initState(); _chargerNotes(); _chargerPlanning(); }
+  void initState() { super.initState(); _chargerPlanning(); }
 
   @override
-  void dispose() { _notesScroll.dispose(); super.dispose(); }
+  void dispose() { super.dispose(); }
 
   Future<void> _chargerPlanning() async {
     try {
@@ -257,147 +241,6 @@ class _AccueilScreenState extends State<AccueilScreen> {
     );
   }
 
-  Widget _champHeureModal(String label, int h, int m, Function(int, int) onChanged) {
-    final hCtrl = TextEditingController(text: h.toString().padLeft(2, '0'));
-    final mCtrl = TextEditingController(text: m.toString().padLeft(2, '0'));
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF185FA5).withOpacity(0.3)),
-      ),
-      child: Column(children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF185FA5))),
-        const SizedBox(height: 4),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          SizedBox(width: 36, child: TextField(
-            controller: hCtrl, textAlign: TextAlign.center,
-            keyboardType: TextInputType.number,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
-                color: Color(0xFF042C53)),
-            decoration: const InputDecoration(
-                hintText: 'HH', contentPadding: EdgeInsets.zero, isDense: true,
-                border: InputBorder.none),
-            onChanged: (v) {
-              final hv = int.tryParse(v) ?? h;
-              onChanged(hv.clamp(0, 23), m);
-            },
-          )),
-          const Text(' : ', style: TextStyle(fontSize: 18, color: Color(0xFF042C53))),
-          SizedBox(width: 36, child: TextField(
-            controller: mCtrl, textAlign: TextAlign.center,
-            keyboardType: TextInputType.number,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
-                color: Color(0xFF042C53)),
-            decoration: const InputDecoration(
-                hintText: 'MM', contentPadding: EdgeInsets.zero, isDense: true,
-                border: InputBorder.none),
-            onChanged: (v) {
-              final mv = int.tryParse(v) ?? m;
-              onChanged(h, mv.clamp(0, 59));
-            },
-          )),
-        ]),
-      ]),
-    );
-  }
-
-  Future<void> _chargerNotes() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_keyNotes) ?? [];
-    setState(() {
-      _notes = raw.map((s) => _Note.fromMap(jsonDecode(s))).toList()
-        ..sort((a, b) => a.titre.toLowerCase().compareTo(b.titre.toLowerCase()));
-    });
-  }
-
-  Future<void> _sauvegarderNotes() async {
-    final prefs = await SharedPreferences.getInstance();
-    _notes.sort((a, b) => a.titre.toLowerCase().compareTo(b.titre.toLowerCase()));
-    await prefs.setStringList(_keyNotes, _notes.map((n) => jsonEncode(n.toMap())).toList());
-  }
-
-  void _ouvrirEditeur(_Note? note) {
-    final titreCtrl = TextEditingController(text: note?.titre ?? '');
-    final contenuCtrl = TextEditingController(text: note?.contenu ?? '');
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppTheme.bgCard,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text(note == null ? 'Nouvelle note' : 'Modifier la note',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary)),
-              if (note != null)
-                GestureDetector(
-                  onTap: () { Navigator.pop(ctx); _supprimerNote(note); },
-                  child: Icon(Icons.delete_outline, color: AppTheme.red, size: 22),
-                ),
-            ]),
-            const SizedBox(height: 16),
-            TextField(
-              controller: titreCtrl, autofocus: true,
-              style: TextStyle(color: AppTheme.textPrimary, fontSize: 15, fontWeight: FontWeight.w500),
-              decoration: InputDecoration(hintText: 'Titre...',
-                  hintStyle: TextStyle(color: AppTheme.textTertiary)),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: contenuCtrl, maxLines: 5,
-              style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
-              decoration: InputDecoration(hintText: 'Contenu...',
-                  hintStyle: TextStyle(color: AppTheme.textTertiary)),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  final titre = titreCtrl.text.trim();
-                  if (titre.isEmpty) return;
-                  if (note == null) {
-                    _notes.add(_Note(id: DateTime.now().millisecondsSinceEpoch.toString(),
-                        titre: titre, contenu: contenuCtrl.text.trim()));
-                  } else { note.titre = titre; note.contenu = contenuCtrl.text.trim(); }
-                  setState(() => _notes.sort((a, b) =>
-                      a.titre.toLowerCase().compareTo(b.titre.toLowerCase())));
-                  _sauvegarderNotes();
-                  Navigator.pop(ctx);
-                },
-                child: Text(note == null ? 'Enregistrer' : 'Mettre à jour',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _supprimerNote(_Note note) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Supprimer la note ?'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler', style: TextStyle(color: AppTheme.blue))),
-        TextButton(onPressed: () {
-          setState(() => _notes.removeWhere((n) => n.id == note.id));
-          _sauvegarderNotes(); Navigator.pop(ctx);
-        }, child: const Text('Supprimer', style: TextStyle(color: AppTheme.red))),
-      ],
-    ));
-  }
-
   void _supprimerGardePlanning(PlannedGarde g) {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       title: const Text('Supprimer du planning ?'),
@@ -429,12 +272,6 @@ class _AccueilScreenState extends State<AccueilScreen> {
     final fin = debut.add(const Duration(days: 13));
     return widget.gardes.where((g) =>
         !g.date.isBefore(debut) && !g.date.isAfter(fin)).toList();
-  }
-
-  List<_Note> get _notesPourLettre {
-    return _notes.where((n) =>
-        n.titre.isNotEmpty &&
-        n.titre[0].toUpperCase() == _lettreActive).toList();
   }
 
   @override
@@ -644,7 +481,6 @@ class _AccueilScreenState extends State<AccueilScreen> {
       ..sort((a, b) => a.date.compareTo(b.date));
 
     final totalH = gardesMois.fold(0.0, (s, g) => s + g.dureeHeures);
-    final isNow = year == now.year && month == now.month;
 
     // Cherche la prochaine garde dans tous les mois futurs
     String prochaine = '—';
@@ -843,7 +679,6 @@ class _AccueilScreenState extends State<AccueilScreen> {
             ...gardesMois.map((g) {
               final isToday = g.date.year == now.year && g.date.month == now.month && g.date.day == now.day;
               final isWe = g.date.weekday >= 6;
-              final label = isToday ? "Aujourd'hui" : isWe ? 'Week-end' : 'Garde';
 
               Color avBg = const Color(0xFFE6F1FB);
               Color avDay = const Color(0xFF185FA5);
@@ -934,7 +769,6 @@ class _AccueilScreenState extends State<AccueilScreen> {
 
     if (feries.isEmpty) return [];
 
-    final nomsJours = ['','lun.','mar.','mer.','jeu.','ven.','sam.','dim.'];
     final moisCourts = ['','jan','fév','mars','avr','mai','juin','juil','août','sep','oct','nov','déc'];
     final nomsFeries = {
       '1-1': ('Jour de l\'An', false),
@@ -1109,57 +943,6 @@ class _AccueilScreenState extends State<AccueilScreen> {
     );
   }
 
-  Widget _champHeurePlanning(String label, int h, int m, Function(int, int) onChange) {
-    final hCtrl = TextEditingController(text: h.toString().padLeft(2, '0'));
-    final mCtrl = TextEditingController(text: m.toString().padLeft(2, '0'));
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF185FA5).withOpacity(0.3)),
-      ),
-      child: Column(children: [
-        Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF185FA5), fontWeight: FontWeight.w500)),
-        const SizedBox(height: 6),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          SizedBox(width: 44, child: TextField(
-            controller: hCtrl, textAlign: TextAlign.center,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(2)],
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF042C53)),
-            decoration: const InputDecoration(
-              hintText: 'HH', contentPadding: EdgeInsets.zero, isDense: true,
-              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF185FA5), width: 1)),
-              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF185FA5), width: 2)),
-            ),
-            onChanged: (v) {
-              final hv = (int.tryParse(v) ?? h).clamp(0, 23);
-              onChange(hv, m);
-            },
-          )),
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 2),
-            child: Text(':', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF042C53)))),
-          SizedBox(width: 44, child: TextField(
-            controller: mCtrl, textAlign: TextAlign.center,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(2)],
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF042C53)),
-            decoration: const InputDecoration(
-              hintText: 'MM', contentPadding: EdgeInsets.zero, isDense: true,
-              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF185FA5), width: 1)),
-              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF185FA5), width: 2)),
-            ),
-            onChanged: (v) {
-              final mv = (int.tryParse(v) ?? m).clamp(0, 59);
-              onChange(h, mv);
-            },
-          )),
-        ]),
-      ]),
-    );
-  }
-
   Widget _metricCard(String label, String value, String sub, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1177,9 +960,4 @@ class _AccueilScreenState extends State<AccueilScreen> {
     );
   }
 
-  String _moisCourt(int mois) {
-    const noms = ['', 'jan', 'fév', 'mar', 'avr', 'mai', 'jun',
-        'jul', 'aoû', 'sep', 'oct', 'nov', 'déc'];
-    return noms[mois];
-  }
 }

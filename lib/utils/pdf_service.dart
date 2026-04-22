@@ -124,7 +124,6 @@ class PdfService {
     final brut = Calculs.totalBrut(gardes, taux: taux, panier: panier,
         indDimanche: dimanche, montantIdaj: idaj);
     final totalPrimes = primes.fold(0.0, (s, p) => s + p.montant);
-    final estMai = DateTime.now().month == 5 && DateTime.now().year == annee;
     final brutAvecPrimes = brut + totalPrimes;
     final net = Calculs.netEstime(brutAvecPrimes);
     final impot = impotSource > 0 ? net * (impotSource / 100) : 0.0;
@@ -277,7 +276,6 @@ class PdfService {
     final nbNT = gardes.where((g) => g.jourNonTravaille).length;
 
     final totalPrimes = primes.fold(0.0, (s, p) => s + p.montant);
-    final estMai = mois == 5;
     final brutAvecPrimes = brut + totalPrimes;
     final net = Calculs.netEstime(brutAvecPrimes);
     final impot = impotSource > 0 ? net * (impotSource / 100) : 0.0;
@@ -547,6 +545,3 @@ class _Ligne {
   _Ligne(this.label, this.detail, this.valeur, this.color, {this.bold = false});
 }
 
-extension on PdfColor {
-  PdfColor flatten() => PdfColor(red, green, blue, 0.4);
-}

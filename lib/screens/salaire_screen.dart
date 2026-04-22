@@ -37,9 +37,6 @@ class SalaireScreen extends StatelessWidget {
     this.debutQuatorzaine,
   });
 
-  static const _moisNoms = ['', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
-      'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-
   List<Map<String, dynamic>> _evolutionMensuelle() {
     if (gardes.isEmpty) return [];
     final Map<String, double> brutParMois = {};
@@ -101,15 +98,11 @@ class SalaireScreen extends StatelessWidget {
     double brut = Calculs.totalBrut(gardesMois,
         taux: tauxHoraire, panier: panierRepas,
         indDimanche: indemnitesDimanche, montantIdaj: montantIdaj);
-    double heuresSupp = Calculs.heuresSupp(gardesMois);
-    double majSupp = Calculs.majorationHeuresSupp(gardesMois, tauxHoraire);
-
     // ── HS par quatorzaine CCN — rattachées au mois en cours ──────────
     final hsSuppParMois = Calculs.heuresSuppParMois(gardes, debutQuatorzaine);
     final moisCle = '${now.year}-${now.month.toString().padLeft(2,'0')}';
     final hsSuppMois = hsSuppParMois[moisCle] ?? 0;
     final majSuppMois = Calculs.majorationHSSurMontant(hsSuppMois, tauxHoraire);
-    double totalNuit = gardesMois.fold(0.0, (s, g) => s + Calculs.heuresNuit(g));
     double totalMajNuit = gardesMois.fold(0.0, (s, g) => s + Calculs.majorationNuit(g, tauxHoraire));
     double totalMajDim = gardesMois.fold(0.0, (s, g) => s + Calculs.majorationDimanche(g, tauxHoraire));
     double totalIdaj = gardesMois.fold(0.0, (s, g) => s + Calculs.idaj(g, montantIdaj));
@@ -153,8 +146,6 @@ class SalaireScreen extends StatelessWidget {
     brutAvecPrimes += indemniteCp;
     double netBrut = Calculs.netEstime(brutAvecPrimes);
     double montantImpot = impotSource > 0 ? netBrut * (impotSource / 100) : 0;
-    double netFinal = netBrut - montantImpot;
-
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
       body: SafeArea(
@@ -681,79 +672,4 @@ class SalaireScreen extends StatelessWidget {
       ]),
     );
 
-  Widget _miniCard(String label, String val, Color color) => Expanded(
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-      decoration: AppTheme.cardDecoration(),
-      child: Column(children: [
-        Text(label, style: TextStyle(fontSize: 9, color: AppTheme.textTertiary)),
-        const SizedBox(height: 3),
-        Text(val, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: color)),
-      ]),
-    ),
-  );
-
-  Widget _groupeCalcul({
-    required String titre,
-    required double total,
-    required Color couleurTotal,
-    required List<Widget> lignes,
-  }) => Container(
-    decoration: AppTheme.cardDecoration(),
-    child: Column(children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(titre, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500,
-              color: AppTheme.textSecondary, letterSpacing: 0.4)),
-          Text('${total >= 0 ? "+" : ""}${total.toStringAsFixed(0)} €',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: couleurTotal)),
-        ]),
-      ),
-      Divider(height: 1, color: AppTheme.bgCardBorder),
-      ...lignes,
-    ]),
-  );
-
-  Widget _ligneGroupe(String label, String detail, double val, Color color) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-    child: Row(children: [
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
-        if (detail.isNotEmpty)
-          Text(detail, style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-      ])),
-      Text('${val >= 0 ? "+" : ""}${val.toStringAsFixed(2)} €',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
-              color: val == 0 ? AppTheme.textTertiary : color)),
-    ]),
-  );
-
-  Widget _ligne(String label, String detail, String valeur,
-      bool isBold, {Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: TextStyle(fontSize: 13,
-                    fontWeight: isBold ? FontWeight.w500 : FontWeight.normal,
-                    color: Colors.white)),
-                Text(detail, style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-              ],
-            ),
-          ),
-          Text(valeur, style: TextStyle(fontSize: 13,
-              fontWeight: isBold ? FontWeight.w500 : FontWeight.normal,
-              color: color ?? AppTheme.blue)),
-        ],
-      ),
-    );
-  }
-
-  Widget _divider() => Divider(height: 1, color: AppTheme.bgCardBorder);
 }

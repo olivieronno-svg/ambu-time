@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'utils/ad_service.dart';
-import 'widgets/banner_ad_widget.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/accueil_screen.dart';
 import 'screens/saisie_garde_screen.dart';
@@ -94,7 +92,6 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
-  int _prevIndex = 0;
   double _tauxHoraire = 13.10;
   double _panierRepas = 7.30;
   double _indemnitesDimanche = 26.00;
@@ -215,7 +212,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         _compteurNavigation = 0;
       }
     }
-    setState(() { _prevIndex = _currentIndex; _currentIndex = index; });
+    setState(() => _currentIndex = index);
   }
 
   List<Garde> get _gardesQuatorzaine {

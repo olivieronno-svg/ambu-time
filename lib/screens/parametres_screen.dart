@@ -4,11 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import '../utils/excel_service.dart';
 import '../utils/pdf_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../app_theme.dart';
 import '../models/garde.dart';
 import '../models/prime.dart';
-import '../utils/calculs.dart';
 import '../utils/purchase_service.dart';
 import '../utils/storage.dart';
 import '../main.dart';
@@ -66,7 +64,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
   late List<PrimeMensuelle> _primes;
   late String _poste;
   DateTime? _debutQuatorzaine;
-  bool _exportEnCours = false;
   bool _isPro = false;
 
   @override
@@ -254,20 +251,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
     }
   }
 
-  Future<void> _exporterPdf() async {
-    setState(() => _exportEnCours = true);
-    try {
-      await PdfService.exporterGardes(
-        gardes: widget.gardes, tauxHoraire: widget.tauxHoraire,
-        panierRepas: widget.panierRepas, indemnitesDimanche: widget.indemnitesDimanche,
-        montantIdaj: widget.montantIdajParam, debutQuatorzaine: _debutQuatorzaine,
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
-    }
-    setState(() => _exportEnCours = false);
-  }
-
   void _ouvrirEditeurPrime({PrimeMensuelle? prime}) {
     final nomCtrl = TextEditingController(text: prime?.nom ?? '');
     final montantCtrl = TextEditingController(
@@ -331,9 +314,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
       ),
     );
   }
-
-  static const _moisNoms = ['', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
-      'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
 
   @override
   Widget build(BuildContext context) {

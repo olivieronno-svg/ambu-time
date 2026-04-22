@@ -115,13 +115,14 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     _chargerDonnees();
     _chargerStatutPro();
     AdService.initialiser();
-    AdService.chargerInterstitielle();
   }
 
   Future<void> _chargerStatutPro() async {
     final pro = await PurchaseService.isPro();
     final tester = await Storage.isTesterPro();
-    if (mounted) setState(() => _isPro = pro || tester);
+    if (!mounted) return;
+    setState(() => _isPro = pro || tester);
+    if (!_isPro) AdService.chargerInterstitielle();
   }
 
   Future<void> _chargerDonnees() async {

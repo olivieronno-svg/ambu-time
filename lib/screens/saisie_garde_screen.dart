@@ -465,7 +465,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             _cpDateFin = null;
             _etatConv = 'date';
           });
-          await _parler('Pas de conges enregistres. Quelle garde dois-je inscrire ?');
+          await _parler('Pas de congés enregistrés. Quelle garde dois-je inscrire ?');
         }
         return;
       }
@@ -511,9 +511,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           if (cpIds.isNotEmpty && widget.onSupprimerGardeId != null) {
             for (final id in cpIds) widget.onSupprimerGardeId!(id);
             _reinitialiserFormulaire();
-            await _parler('Conges supprimes. Quelle garde dois-je inscrire ?');
+            await _parler('Congés supprimés. Quelle garde dois-je inscrire ?');
           } else {
-            await _parler('Pas de conges enregistres. Quelle garde dois-je inscrire ?');
+            await _parler('Pas de congés enregistrés. Quelle garde dois-je inscrire ?');
           }
           break;
         }
@@ -884,7 +884,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           final moisDebutD = moisNCD[dateD.month];
           if (_isCongesPaies) {
             _etatConv = 'conge_fin';
-            await _parler('Du $jourDebutD $moisDebutD. Quel est le dernier jour des conges ?');
+            await _parler('Du $jourDebutD $moisDebutD. Quel est le dernier jour des congés ?');
           } else {
             _etatConv = 'confirmer';
             await _parler('Jour non travaille le $jourDebutD $moisDebutD. Dois-je sauvegarder ?');
@@ -943,7 +943,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           _etatConv = 'date';
           await _parler('D\'accord. Quelle autre date ?');
         } else {
-          await _parler('Voulez-vous annuler le conge ou changer la date ?');
+          await _parler('Voulez-vous annuler le congé ou changer la date ?');
         }
         break;
 
@@ -972,24 +972,42 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           }
           setState(() => _etatConv = '');
           await _tts.stop();
-          // Vérification orale chevauchement CP avec gardes existantes
           if (_isCongesPaies) {
             final debutCP = DateTime(_date.year, _date.month, _date.day);
             final finCP = _cpDateFin != null ? DateTime(_cpDateFin!.year, _cpDateFin!.month, _cpDateFin!.day) : debutCP;
+            final estModif = widget.gardeAModifier != null;
+            // CP-on-CP → alerte orale + blocage
+            final conflitCP = widget.toutesGardes.where((g) {
+              if (!g.isCongesPaies) return false;
+              if (estModif && g.id == widget.gardeAModifier!.id) return false;
+              final gDate = DateTime(g.date.year, g.date.month, g.date.day);
+              final gFin = g.cpDateFin != null ? DateTime(g.cpDateFin!.year, g.cpDateFin!.month, g.cpDateFin!.day) : gDate;
+              return !(finCP.isBefore(gDate) || debutCP.isAfter(gFin));
+            }).firstOrNull;
+            if (conflitCP != null) {
+              await _parler('Attention, des congés payés sont déjà enregistrés sur cette période. Enregistrement annulé.');
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('⛔ Période déjà saisie en congés payés',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 4),
+              ));
+              return;
+            }
+            // CP-on-garde → alerte orale + on sauvegarde quand même
             final gardesConflits = widget.toutesGardes.where((g) {
               if (g.isCongesPaies || g.jourNonTravaille) return false;
+              if (estModif && g.id == widget.gardeAModifier!.id) return false;
               final gDate = DateTime(g.date.year, g.date.month, g.date.day);
               return !gDate.isBefore(debutCP) && !gDate.isAfter(finCP);
             }).toList();
             if (gardesConflits.isNotEmpty) {
               final nbG = gardesConflits.length;
-              await _parler('Attention, $nbG garde${nbG > 1 ? "s sont" : " est"} déjà comptabilisée${nbG > 1 ? "s" : ""} sur cette période. Congé enregistré quand même.');
+              await _parler('Attention, ${nbG > 1 ? "$nbG gardes sont" : "une garde est"} déjà enregistrée${nbG > 1 ? "s" : ""} sur cette période. Congé enregistré quand même.');
             }
           }
-          if (_checkCPChevauchement()) return;
-          _enregistrerGarde();  // enregistre D'ABORD
-          await _parler('Parfait, garde enregistree !');
-          // Réinitialise APRÈS enregistrement
+          _enregistrerGarde();
+          await _parler(_isCongesPaies ? 'Congés payés enregistrés !' : 'Parfait, garde enregistrée !');
           Future.delayed(const Duration(milliseconds: 2000), () {
             if (mounted) _reinitialiserFormulaire();
           });

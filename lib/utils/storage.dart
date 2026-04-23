@@ -23,6 +23,7 @@ class Storage {
   static const _posteKey = 'poste';
   static const _congesAcquisKey = 'conges_acquis_avant';
   static const _modeCpKey = 'mode_calcul_cp';
+  static const _brutPeriodeRefKey = 'brut_periode_ref';
 
   static Future<void> sauvegarderGardes(List<Garde> gardes) async {
     final prefs = await SharedPreferences.getInstance();
@@ -48,6 +49,7 @@ class Storage {
     String poste = 'dea',
     double congesAcquisAvant = 0,
     int modeCp = 0, // 0=auto, 1=dixième, 2=maintien
+    double brutPeriodeRef = 0,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_tauxKey, taux);
@@ -59,6 +61,7 @@ class Storage {
     await prefs.setString(_posteKey, poste);
     await prefs.setDouble(_congesAcquisKey, congesAcquisAvant);
     await prefs.setInt(_modeCpKey, modeCp);
+    await prefs.setDouble(_brutPeriodeRefKey, brutPeriodeRef);
     await prefs.setStringList(
         _primesKey, primes.map((p) => jsonEncode(p.toMap())).toList());
     if (debutQuatorzaine != null) {
@@ -72,18 +75,38 @@ class Storage {
     final prefs = await SharedPreferences.getInstance();
     final quatStr = prefs.getString(_quatorzaineKey);
     final primesRaw = prefs.getStringList(_primesKey) ?? [];
+    final primes = primesRaw.map((s) => PrimeMensuelle.fromMap(jsonDecode(s))).toList();
+
+    // Migration : les anciennes primes sans `mois` se voient assignées au mois
+    // où elles sont chargées pour la première fois, et sauvegardées.
+    // Sans ça, elles migrent avec le temps (bug silencieux).
+    final now = DateTime.now();
+    final moisCourant = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    var migrationNecessaire = false;
+    for (final p in primes) {
+      if (p.mois == null) {
+        p.mois = moisCourant;
+        migrationNecessaire = true;
+      }
+    }
+    if (migrationNecessaire) {
+      await prefs.setStringList(
+          _primesKey, primes.map((p) => jsonEncode(p.toMap())).toList());
+    }
+
     return {
       'taux': prefs.getDouble(_tauxKey) ?? 13.10,
       'panier': prefs.getDouble(_panierKey) ?? 7.30,
       'dimanche': prefs.getDouble(_dimancheKey) ?? 26.00,
       'idaj': prefs.getDouble(_idajKey) ?? 35.00,
       'debutQuatorzaine': quatStr != null ? DateTime.parse(quatStr) : null,
-      'primes': primesRaw.map((s) => PrimeMensuelle.fromMap(jsonDecode(s))).toList(),
+      'primes': primes,
       'impotSource': prefs.getDouble(_impotSourceKey) ?? 0.0,
       'kmDomicileTravail': prefs.getDouble(_kmDomicileKey) ?? 0.0,
       'poste': prefs.getString(_posteKey) ?? 'dea',
       'congesAcquisAvant': prefs.getDouble(_congesAcquisKey) ?? 0.0,
       'modeCp': prefs.getInt(_modeCpKey) ?? 0,
+      'brutPeriodeRef': prefs.getDouble(_brutPeriodeRefKey) ?? 0.0,
     };
   }
 
@@ -125,6 +148,7 @@ class Storage {
         'poste': params['poste'],
         'congesAcquisAvant': params['congesAcquisAvant'],
         'modeCp': params['modeCp'],
+        'brutPeriodeRef': params['brutPeriodeRef'],
       },
     };
     final json = const JsonEncoder.withIndent('  ').convert(data);
@@ -161,6 +185,7 @@ class Storage {
       if (p['poste'] != null) await prefs.setString(_posteKey, p['poste'] as String);
       if (p['congesAcquisAvant'] != null) await prefs.setDouble(_congesAcquisKey, (p['congesAcquisAvant'] as num).toDouble());
       if (p['modeCp'] != null) await prefs.setInt(_modeCpKey, p['modeCp'] as int);
+      if (p['brutPeriodeRef'] != null) await prefs.setDouble(_brutPeriodeRefKey, (p['brutPeriodeRef'] as num).toDouble());
       if (p['debutQuatorzaine'] != null) await prefs.setString(_quatorzaineKey, p['debutQuatorzaine'] as String);
       if (p['primes'] != null) {
         final primesRaw = p['primes'] as List<dynamic>;
@@ -171,6 +196,30 @@ class Storage {
     } catch (e) {
       return '❌ Fichier invalide : $e';
     }
+  }
+
+  /// Supprime toutes les données utilisateur (gardes, paramètres, planning,
+  /// et flag tester-pro pour éviter les fuites de privilège entre comptes).
+  /// Conserve uniquement le thème (préférence UI du device).
+  static Future<void> effacerDonneesUtilisateur() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_gardesKey);
+    await prefs.remove(_tauxKey);
+    await prefs.remove(_panierKey);
+    await prefs.remove(_dimancheKey);
+    await prefs.remove(_idajKey);
+    await prefs.remove(_quatorzaineKey);
+    await prefs.remove(_primesKey);
+    await prefs.remove(_impotSourceKey);
+    await prefs.remove(_kmDomicileKey);
+    await prefs.remove(_posteKey);
+    await prefs.remove(_congesAcquisKey);
+    await prefs.remove(_modeCpKey);
+    await prefs.remove(_brutPeriodeRefKey);
+    await prefs.remove(_rappelCollegueKey);
+    await prefs.remove(_rappelDistanceKey);
+    await prefs.remove(_testerProKey);
+    await prefs.remove('app_planning_v1');
   }
 
   static Future<bool> isTesterPro() async {

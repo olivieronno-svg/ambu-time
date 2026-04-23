@@ -17,14 +17,16 @@ class CloudSyncService {
         .doc('main');
   }
 
-  /// Pousse toutes les données vers Firestore. Appeler sans await (fire-and-forget).
-  static Future<void> syncToCloud({
+  /// Pousse toutes les données vers Firestore.
+  /// Retourne `true` si l'écriture a réussi, `false` sinon (réseau, règles, etc.).
+  /// Retourne aussi `false` si l'utilisateur n'est pas connecté (no-op).
+  static Future<bool> syncToCloud({
     required List<Garde> gardes,
     required Map<String, dynamic> params,
     required List<Map<String, dynamic>> planningMaps,
   }) async {
     final ref = _docRef();
-    if (ref == null) return;
+    if (ref == null) return false;
     try {
       await ref.set({
         'gardes': gardes.map((g) => g.toMap()).toList(),
@@ -32,8 +34,10 @@ class CloudSyncService {
         'planning': planningMaps,
         'lastUpdated': FieldValue.serverTimestamp(),
       });
+      return true;
     } catch (e) {
       debugPrint('CloudSync erreur : $e');
+      return false;
     }
   }
 
@@ -48,6 +52,20 @@ class CloudSyncService {
     } catch (e) {
       debugPrint('CloudSync fetch erreur : $e');
       return null;
+    }
+  }
+
+  /// Supprime toutes les données cloud de l'utilisateur connecté.
+  /// Utilisé pour la suppression de compte (conformité Google Play).
+  static Future<bool> deleteCloudData() async {
+    final ref = _docRef();
+    if (ref == null) return false;
+    try {
+      await ref.delete();
+      return true;
+    } catch (e) {
+      debugPrint('CloudSync delete erreur : $e');
+      return false;
     }
   }
 

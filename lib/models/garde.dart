@@ -21,6 +21,13 @@ class Garde {
   final int nbJoursCP;
   final double primeLongueDistance;
 
+  // Snapshot des paramètres en vigueur au moment de la saisie.
+  // Nullable pour rétrocompat avec les anciennes gardes.
+  final double? tauxHoraireUtilise;
+  final double? panierRepasUtilise;
+  final double? indemnitesDimancheUtilise;
+  final double? montantIdajUtilise;
+
   Garde({
     required this.id,
     required this.date,
@@ -40,7 +47,45 @@ class Garde {
     this.cpDateFin,
     this.nbJoursCP = 1,
     this.primeLongueDistance = 0,
+    this.tauxHoraireUtilise,
+    this.panierRepasUtilise,
+    this.indemnitesDimancheUtilise,
+    this.montantIdajUtilise,
   });
+
+  /// Retourne une copie avec les snapshots mis à jour.
+  /// Utilisé par la migration pour figer les valeurs historiques.
+  Garde copyWithSnapshot({
+    double? tauxHoraire,
+    double? panierRepas,
+    double? indemnitesDimanche,
+    double? montantIdaj,
+  }) {
+    return Garde(
+      id: id,
+      date: date,
+      heureDebut: heureDebut,
+      heureFin: heureFin,
+      jourNonTravaille: jourNonTravaille,
+      collegue: collegue,
+      vehiculeUtilise: vehiculeUtilise,
+      kmDomicileTravail: kmDomicileTravail,
+      achats: achats,
+      pauseMinutes: pauseMinutes,
+      panierRepasGarde: panierRepasGarde,
+      avecPanier: avecPanier,
+      debutQuatorzaine: debutQuatorzaine,
+      qualification: qualification,
+      isCongesPaies: isCongesPaies,
+      cpDateFin: cpDateFin,
+      nbJoursCP: nbJoursCP,
+      primeLongueDistance: primeLongueDistance,
+      tauxHoraireUtilise: tauxHoraireUtilise ?? tauxHoraire,
+      panierRepasUtilise: panierRepasUtilise ?? panierRepas,
+      indemnitesDimancheUtilise: indemnitesDimancheUtilise ?? indemnitesDimanche,
+      montantIdajUtilise: montantIdajUtilise ?? montantIdaj,
+    );
+  }
 
   int get dureeMinutesBrut => jourNonTravaille ? 0 : heureFin.difference(heureDebut).inMinutes;
   int get dureeMinutes => dureeMinutesBrut - pauseMinutes;
@@ -152,6 +197,10 @@ class Garde {
     'cpDateFin': cpDateFin?.toIso8601String(),
     'nbJoursCP': nbJoursCP,
     'primeLongueDistance': primeLongueDistance,
+    'tauxHoraireUtilise': tauxHoraireUtilise,
+    'panierRepasUtilise': panierRepasUtilise,
+    'indemnitesDimancheUtilise': indemnitesDimancheUtilise,
+    'montantIdajUtilise': montantIdajUtilise,
   };
 
   factory Garde.fromMap(Map<String, dynamic> map) {
@@ -180,6 +229,10 @@ class Garde {
           : null,
       nbJoursCP: map['nbJoursCP'] ?? 1,
       primeLongueDistance: (map['primeLongueDistance'] ?? 0).toDouble(),
+      tauxHoraireUtilise: (map['tauxHoraireUtilise'] as num?)?.toDouble(),
+      panierRepasUtilise: (map['panierRepasUtilise'] as num?)?.toDouble(),
+      indemnitesDimancheUtilise: (map['indemnitesDimancheUtilise'] as num?)?.toDouble(),
+      montantIdajUtilise: (map['montantIdajUtilise'] as num?)?.toDouble(),
     );
   }
 }

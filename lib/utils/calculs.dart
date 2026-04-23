@@ -9,13 +9,16 @@ class Calculs {
 
   static double heuresNuit(Garde g) => g.heuresNuitMinutes / 60;
 
-  static double majorationNuit(Garde g, double taux) =>
-      heuresNuit(g) * taux * 0.25;
+  static double majorationNuit(Garde g, double taux) {
+    final t = g.tauxHoraireUtilise ?? taux;
+    return heuresNuit(g) * t * 0.25;
+  }
 
   // Majoration 25% sur toute la durée si dimanche ou jour férié
   static double majorationDimanche(Garde g, double taux) {
     if (!g.isDimancheOuFerie) return 0;
-    return g.dureeHeures * taux * 0.25;
+    final t = g.tauxHoraireUtilise ?? taux;
+    return g.dureeHeures * t * 0.25;
   }
 
   // IDAJ : majoration sur l'amplitude au-delà de 12h
@@ -23,17 +26,18 @@ class Calculs {
   // au-delà de 13h : +100% du taux horaire
   static double idaj(Garde g, double taux) {
     if (!g.hasIDAJ) return 0;
+    final t = g.tauxHoraireUtilise ?? taux;
     final amplitudeH = g.amplitudeMinutes / 60;
     double indemnite = 0;
 
     // Tranche 12h → 13h : 75% du taux sur les minutes dans cette tranche
     final tranche1 = (amplitudeH.clamp(12, 13) - 12); // en heures
-    indemnite += tranche1 * taux * 0.75;
+    indemnite += tranche1 * t * 0.75;
 
     // Tranche > 13h : 100% du taux sur le reste
     if (amplitudeH > 13) {
       final tranche2 = amplitudeH - 13;
-      indemnite += tranche2 * taux * 1.00;
+      indemnite += tranche2 * t * 1.00;
     }
 
     return indemnite;
@@ -46,18 +50,22 @@ class Calculs {
     double indDimanche = indemnitesDimancheDefaut,
     double montantIdaj = idajMontantDefaut,
   }) {
+    // Utilise le snapshot de la Garde si disponible, sinon les paramètres passés
+    final t = g.tauxHoraireUtilise ?? taux;
+    final indD = g.indemnitesDimancheUtilise ?? indDimanche;
+
     // CCN Transports Sanitaires — accord cadre :
     // Jour férié non travaillé = maintien de salaire sur base 7h
     if (g.jourNonTravaille) {
-      if (g.isJourFerieSeulement) return 7 * taux;
+      if (g.isJourFerieSeulement) return 7 * t;
       return 0;
     }
-    double base = g.dureeHeures * taux;
+    double base = g.dureeHeures * t;
     double majNuit = majorationNuit(g, taux);
     double majDim = majorationDimanche(g, taux);
     double indaj = idaj(g, taux);
     double panierGarde = g.panierRepasGarde;
-    double indDim = g.isDimancheOuFerie ? indDimanche : 0;
+    double indDim = g.isDimancheOuFerie ? indD : 0;
     return base + majNuit + majDim + indaj + panierGarde + indDim + g.primeLongueDistance;
   }
 

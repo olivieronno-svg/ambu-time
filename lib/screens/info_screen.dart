@@ -165,6 +165,44 @@ class _InfoScreenState extends State<InfoScreen> {
               ]),
             ),
 
+            // ── Confidentialité & Données (obligatoire Google Play) ───
+            _sectionTitle('Confidentialité & Données'),
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Column(children: [
+                _lienDroit(
+                  'Politique de confidentialité',
+                  'Comment tes données sont traitées',
+                  Icons.privacy_tip_outlined,
+                  'https://onnoff-svg.github.io/ambutime/privacy.html',
+                ),
+                const SizedBox(height: 8),
+                _lienDroit(
+                  'Supprimer mon compte (web)',
+                  'Alternative à la suppression in-app',
+                  Icons.no_accounts_outlined,
+                  'https://onnoff-svg.github.io/ambutime/delete-account.html',
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.blueAccent.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.info_outline, size: 14, color: AppTheme.blueAccent),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(
+                      'Tu peux aussi supprimer ton compte depuis Paramètres → Compte → Supprimer mon compte.',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                    )),
+                  ]),
+                ),
+              ]),
+            ),
+
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(

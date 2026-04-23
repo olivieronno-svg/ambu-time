@@ -52,6 +52,28 @@ class AuthService {
     await _auth.signOut();
   }
 
+  /// Supprime le compte Firebase de l'utilisateur courant.
+  /// Conformité Google Play : les utilisateurs doivent pouvoir supprimer leur
+  /// compte depuis l'app. Retourne `true` si la suppression a réussi,
+  /// `false` si aucun utilisateur connecté, `'reauth'` si Firebase exige
+  /// une ré-authentification récente avant la suppression.
+  static Future<Object> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    try {
+      await user.delete();
+      try { await _googleSignIn.signOut(); } catch (_) {}
+      return true;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') return 'reauth';
+      debugPrint('Delete account erreur : ${e.code} ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('Delete account erreur : $e');
+      return false;
+    }
+  }
+
   static String _generateNonce([int length = 32]) {
     const charset =
         '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';

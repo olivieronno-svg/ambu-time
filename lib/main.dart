@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -109,12 +111,16 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   String _poste = 'dea';
   double _congesAcquisAvant = 0;
   int _modeCp = 0;
+  double _brutPeriodeRef = 0;
   DateTime? _debutQuatorzaine;
   bool _chargement = true;
   bool _isPro = false;
   int? _compteurNavigation = 0;
   Garde? _gardeAModifier;
   final List<Garde> _gardes = [];
+  StreamSubscription<User?>? _authSub;
+  String? _dernierUid;
+  bool _syncHorsLigne = false; // évite les snackbars en rafale quand offline
 
   @override
   void initState() {
@@ -122,6 +128,51 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     _chargerDonnees();
     _chargerStatutPro();
     AdService.initialiser();
+    _dernierUid = FirebaseAuth.instance.currentUser?.uid;
+    _authSub = FirebaseAuth.instance.authStateChanges().listen(_onAuthChange);
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _onAuthChange(User? user) async {
+    final nouvelUid = user?.uid;
+    // Purge des données locales dès que l'uid change vers un autre ou vers null.
+    // Cela couvre : sign-out (A → null), switch de compte sans sign-out (A → B),
+    // et préserve l'état quand Firebase re-émet le même user (A → A, démarrage).
+    final uidChange = _dernierUid != null && _dernierUid != nouvelUid;
+    if (uidChange) {
+      await Storage.effacerDonneesUtilisateur();
+      if (!mounted) {
+        _dernierUid = nouvelUid;
+        return;
+      }
+      _invaliderCacheQuatorzaine();
+      setState(() {
+        _gardes.clear();
+        _tauxHoraire = 13.10;
+        _panierRepas = 7.30;
+        _indemnitesDimanche = 26.00;
+        _montantIdaj = 35.00;
+        _primes = [];
+        _impotSource = 0;
+        _kmDomicileTravail = 0;
+        _poste = 'dea';
+        _congesAcquisAvant = 0;
+        _modeCp = 0;
+        _brutPeriodeRef = 0;
+        _debutQuatorzaine = null;
+        _gardeAModifier = null;
+        _currentIndex = 0;
+        _isPro = false;
+      });
+      // Recharge le statut Pro (RevenueCat peut avoir un abonnement pour ce compte)
+      _chargerStatutPro();
+    }
+    _dernierUid = nouvelUid;
   }
 
   Future<void> _chargerStatutPro() async {
@@ -137,12 +188,44 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       final gardes = await Storage.chargerGardes();
       final params = await Storage.chargerParametres();
       if (!mounted) return;
+
+      final tauxLu = (params['taux'] as num?)?.toDouble() ?? _tauxHoraire;
+      final panierLu = (params['panier'] as num?)?.toDouble() ?? _panierRepas;
+      final dimancheLu = (params['dimanche'] as num?)?.toDouble() ?? _indemnitesDimanche;
+      final idajLu = (params['idaj'] as num?)?.toDouble() ?? _montantIdaj;
+
+      // ── Migration : fige les paramètres historiques sur les gardes sans snapshot ──
+      // Au 1er chargement après mise à jour, les anciennes gardes n'ont pas de
+      // tauxHoraireUtilise. On les remplit avec les valeurs courantes pour que
+      // tout changement futur n'affecte plus leur calcul.
+      final gardesMigrees = gardes.map((g) {
+        // Migre si au moins un champ snapshot manque (copyWithSnapshot
+        // préserve les existants grâce au `??`, ne complète que les nulls).
+        if (g.tauxHoraireUtilise == null ||
+            g.panierRepasUtilise == null ||
+            g.indemnitesDimancheUtilise == null ||
+            g.montantIdajUtilise == null) {
+          return g.copyWithSnapshot(
+            tauxHoraire: tauxLu,
+            panierRepas: panierLu,
+            indemnitesDimanche: dimancheLu,
+            montantIdaj: idajLu,
+          );
+        }
+        return g;
+      }).toList();
+
+      final besoinSauvegarde = gardesMigrees.any((g) =>
+          g.tauxHoraireUtilise != null &&
+          gardes.firstWhere((og) => og.id == g.id).tauxHoraireUtilise == null);
+
+      _invaliderCacheQuatorzaine();
       setState(() {
-        _gardes.addAll(gardes);
-        _tauxHoraire = (params['taux'] as num?)?.toDouble() ?? _tauxHoraire;
-        _panierRepas = (params['panier'] as num?)?.toDouble() ?? _panierRepas;
-        _indemnitesDimanche = (params['dimanche'] as num?)?.toDouble() ?? _indemnitesDimanche;
-        _montantIdaj = (params['idaj'] as num?)?.toDouble() ?? _montantIdaj;
+        _gardes.addAll(gardesMigrees);
+        _tauxHoraire = tauxLu;
+        _panierRepas = panierLu;
+        _indemnitesDimanche = dimancheLu;
+        _montantIdaj = idajLu;
         _debutQuatorzaine = params['debutQuatorzaine'] as DateTime?;
         _primes = params['primes'] as List<PrimeMensuelle>? ?? _primes;
         _impotSource = (params['impotSource'] as num?)?.toDouble() ?? _impotSource;
@@ -150,8 +233,14 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         _poste = params['poste'] as String? ?? _poste;
         _congesAcquisAvant = (params['congesAcquisAvant'] as num?)?.toDouble() ?? 0.0;
         _modeCp = params['modeCp'] as int? ?? 0;
+        _brutPeriodeRef = (params['brutPeriodeRef'] as num?)?.toDouble() ?? 0.0;
         _chargement = false;
       });
+
+      if (besoinSauvegarde) {
+        // Fire-and-forget : le UI est déjà affiché, pas besoin d'attendre.
+        unawaited(Storage.sauvegarderGardes(_gardes));
+      }
     } catch (e, stack) {
       debugPrint('Erreur chargement données : $e\n$stack');
       if (!mounted) return;
@@ -167,6 +256,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   }
 
   Future<void> _ajouterGarde(Garde g) async {
+    _invaliderCacheQuatorzaine();
     setState(() { _gardes.insert(0, g); _gardeAModifier = null; });
     await Storage.sauvegarderGardes(_gardes);
     _syncToCloud();
@@ -174,6 +264,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   }
 
   Future<void> _modifierGarde(Garde g) async {
+    _invaliderCacheQuatorzaine();
     setState(() {
       final i = _gardes.indexWhere((e) => e.id == g.id);
       if (i != -1) _gardes[i] = g;
@@ -185,6 +276,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   }
 
   Future<void> _supprimerGarde(String id) async {
+    _invaliderCacheQuatorzaine();
     setState(() => _gardes.removeWhere((g) => g.id == id));
     await Storage.sauvegarderGardes(_gardes);
     _syncToCloud();
@@ -193,20 +285,22 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   Future<void> _modifierParametres(double taux, double panier, double dimanche,
       double idaj, DateTime? debutQuatorzaine, List<PrimeMensuelle> primes,
       double impotSource, double kmDomicileTravail, String poste,
-      [double congesAcquisAvant = 0, int modeCp = 0]) async {
+      [double congesAcquisAvant = 0, int modeCp = 0, double brutPeriodeRef = 0]) async {
+    _invaliderCacheQuatorzaine();
     setState(() {
       _tauxHoraire = taux; _panierRepas = panier;
       _indemnitesDimanche = dimanche; _montantIdaj = idaj;
       _debutQuatorzaine = debutQuatorzaine; _primes = primes;
       _impotSource = impotSource; _kmDomicileTravail = kmDomicileTravail;
       _poste = poste; _congesAcquisAvant = congesAcquisAvant;
-      _modeCp = modeCp;
+      _modeCp = modeCp; _brutPeriodeRef = brutPeriodeRef;
     });
     await Storage.sauvegarderParametres(
       taux: taux, panier: panier, dimanche: dimanche, idaj: idaj,
       debutQuatorzaine: debutQuatorzaine, primes: primes,
       impotSource: impotSource, kmDomicileTravail: kmDomicileTravail,
       poste: poste, congesAcquisAvant: congesAcquisAvant, modeCp: modeCp,
+      brutPeriodeRef: brutPeriodeRef,
     );
     _syncToCloud();
   }
@@ -214,6 +308,9 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   // ── Cloud sync ────────────────────────────────────────────────────────────
 
   void _syncToCloud() {
+    // Ne notifie que si l'utilisateur est connecté — sinon c'est normal que
+    // le sync soit no-op (retourne false).
+    if (FirebaseAuth.instance.currentUser == null) return;
     SharedPreferences.getInstance().then((prefs) {
       final planningRaw = prefs.getStringList('app_planning_v1') ?? [];
       final planningMaps = planningRaw
@@ -228,9 +325,29 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
           'primes': _primes, 'impotSource': _impotSource,
           'kmDomicileTravail': _kmDomicileTravail, 'poste': _poste,
           'congesAcquisAvant': _congesAcquisAvant, 'modeCp': _modeCp,
+          'brutPeriodeRef': _brutPeriodeRef,
         },
         planningMaps: planningMaps,
       );
+    }).then((ok) {
+      if (!mounted) return;
+      if (ok == true && _syncHorsLigne) {
+        // Reconnecté — informe l'utilisateur
+        _syncHorsLigne = false;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('✓ Synchronisation rétablie'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ));
+      } else if (ok == false && !_syncHorsLigne) {
+        // Premier échec depuis la dernière réussite → notifie une fois
+        _syncHorsLigne = true;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('⚠ Synchronisation cloud échouée — données en local uniquement'),
+          backgroundColor: Colors.orange.shade800,
+          duration: const Duration(seconds: 4),
+        ));
+      }
     }).catchError((e, st) {
       debugPrint('Sync cloud échouée : $e');
     });
@@ -241,6 +358,15 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     if (!hasCloud) { _syncToCloud(); return; }
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
+
+    // Si les données locales sont vides, on restaure automatiquement depuis le cloud
+    // sans demander, pour éviter d'écraser le cloud avec un état vide.
+    if (_gardes.isEmpty) {
+      await _restaurerDepuisCloud(messenger);
+      return;
+    }
+
+    if (!mounted) return;
     final restore = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -276,7 +402,15 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
 
   Future<void> _restaurerDepuisCloud(ScaffoldMessengerState messenger) async {
     final data = await CloudSyncService.fetchFromCloud();
-    if (data == null || !mounted) return;
+    if (!mounted) return;
+    if (data == null) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('❌ Échec de la restauration — impossible d\'accéder au cloud'),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 4),
+      ));
+      return;
+    }
 
     final gardesRaw = (data['gardes'] as List<dynamic>? ?? []);
     final gardes = gardesRaw
@@ -291,11 +425,22 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     final debutStr = p['debutQuatorzaine'] as String?;
     final debutQuatorzaine = debutStr != null ? DateTime.tryParse(debutStr) : null;
 
-    // Restaure le planning dans SharedPreferences
+    // Restaure le planning dans SharedPreferences en ne gardant que les
+    // entrées qui sont bien des Maps. Évite de réécrire du JSON corrompu
+    // qui ferait échouer le chargement dans AccueilScreen.
     final planningRaw = (data['planning'] as List<dynamic>? ?? []);
+    final planningValide = <String>[];
+    for (final m in planningRaw) {
+      if (m is Map) {
+        try {
+          planningValide.add(jsonEncode(Map<String, dynamic>.from(m)));
+        } catch (e) {
+          debugPrint('Planning cloud item ignoré : $e');
+        }
+      }
+    }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('app_planning_v1',
-        planningRaw.map((m) => jsonEncode(m)).toList());
+    await prefs.setStringList('app_planning_v1', planningValide);
 
     // Persiste localement
     await Storage.sauvegarderGardes(gardes);
@@ -311,9 +456,11 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       poste: p['poste'] as String? ?? _poste,
       congesAcquisAvant: (p['congesAcquisAvant'] as num?)?.toDouble() ?? _congesAcquisAvant,
       modeCp: p['modeCp'] as int? ?? _modeCp,
+      brutPeriodeRef: (p['brutPeriodeRef'] as num?)?.toDouble() ?? _brutPeriodeRef,
     );
 
     if (!mounted) return;
+    _invaliderCacheQuatorzaine();
     setState(() {
       _gardes..clear()..addAll(gardes);
       _tauxHoraire = (p['taux'] as num?)?.toDouble() ?? _tauxHoraire;
@@ -327,6 +474,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       _poste = p['poste'] as String? ?? _poste;
       _congesAcquisAvant = (p['congesAcquisAvant'] as num?)?.toDouble() ?? _congesAcquisAvant;
       _modeCp = p['modeCp'] as int? ?? _modeCp;
+      _brutPeriodeRef = (p['brutPeriodeRef'] as num?)?.toDouble() ?? _brutPeriodeRef;
     });
     messenger.showSnackBar(
       const SnackBar(content: Text('✓ Données restaurées depuis le cloud')),
@@ -349,11 +497,24 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     setState(() => _currentIndex = index);
   }
 
+  // Cache du filtrage quatorzaine — invalidé par _invaliderCacheQuatorzaine()
+  List<Garde>? _gardesQuatorzaineCache;
+
+  void _invaliderCacheQuatorzaine() {
+    _gardesQuatorzaineCache = null;
+  }
+
   List<Garde> get _gardesQuatorzaine {
-    if (_debutQuatorzaine == null) return _gardes;
+    if (_gardesQuatorzaineCache != null) return _gardesQuatorzaineCache!;
+    if (_debutQuatorzaine == null) {
+      _gardesQuatorzaineCache = _gardes;
+      return _gardes;
+    }
     final fin = _debutQuatorzaine!.add(const Duration(days: 13));
-    return _gardes.where((g) =>
+    final result = _gardes.where((g) =>
         !g.date.isBefore(_debutQuatorzaine!) && !g.date.isAfter(fin)).toList();
+    _gardesQuatorzaineCache = result;
+    return result;
   }
 
   double get _primeAnnuelleCalculee {
@@ -400,6 +561,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         primes: _primes, primeAnnuelle: _primeAnnuelleCalculee,
         impotSource: _impotSource, congesAcquisAvant: _congesAcquisAvant,
         modeCp: _modeCp, debutQuatorzaine: _debutQuatorzaine,
+        brutPeriodeRef: _brutPeriodeRef,
       ),
       GraphiquesScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
@@ -421,6 +583,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         primeAnnuelleCalculee: _primeAnnuelleCalculee,
         kmDomicileTravail: _kmDomicileTravail, poste: _poste,
         congesAcquisAvant: _congesAcquisAvant, modeCp: _modeCp,
+        brutPeriodeRef: _brutPeriodeRef,
         onSignInSuccess: _onSignInSuccess,
       ),
       ImpotsScreen(

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/garde.dart';
 import '../models/planned_garde.dart';
 import '../utils/calculs.dart';
+import '../utils/notification_service.dart';
 import '../app_theme.dart';
 
 class AccueilScreen extends StatefulWidget {
@@ -100,6 +101,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       Navigator.pop(ctx);
                       setState(() { _planning.removeWhere((g) => g.id == garde.id); });
                       _sauvegarderPlanning();
+                      NotificationService.annulerAlarme(garde.id);
                     },
                     child: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
                   ),
@@ -230,6 +232,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
                     _planning.sort((a, b) => a.date.compareTo(b.date));
                   });
                   _sauvegarderPlanning();
+                  // Programme les rappels (1h avant + 6h le matin du jour J)
+                  NotificationService.programmerAlarme(pg);
                   Navigator.pop(ctx);
                 },
                 child: Text(garde == null ? 'Ajouter au planning' : 'Mettre à jour',
@@ -252,6 +256,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
         TextButton(onPressed: () {
           Navigator.pop(ctx);
           setState(() { _planning.removeWhere((p) => p.id == g.id); _sauvegarderPlanning(); });
+          NotificationService.annulerAlarme(g.id);
         }, child: const Text('Supprimer', style: TextStyle(color: AppTheme.red))),
       ],
     ));

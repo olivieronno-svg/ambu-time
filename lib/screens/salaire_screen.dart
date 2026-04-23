@@ -74,7 +74,11 @@ class SalaireScreen extends StatelessWidget {
     double brutMois = Calculs.totalBrut(gardesMoisCours,
         taux: tauxHoraire, panier: panierRepas,
         indDimanche: indemnitesDimanche, montantIdaj: montantIdaj);
-    double totalPrimesMensuelles = primes.fold(0.0, (s, p) => s + p.montant);
+    // Filtre les primes qui s'appliquent au mois en cours (selon leur champ mois).
+    final moisCourant = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    double totalPrimesMensuelles = primes
+        .where((p) => p.appliqueAu(moisCourant))
+        .fold(0.0, (s, p) => s + p.montant);
     double primeAnnuelleApplicable = estMai ? primeAnnuelle : 0;
     // CP pour le header (calculé avant la section détail)
     int jourscpHeader = 0;

@@ -45,6 +45,10 @@ class PdfService {
         .toList()
       ..sort((a, b) => a.date.compareTo(b.date));
 
+    // Filtre les primes qui s'appliquent à ce mois précis
+    final moisCle = '$annee-${mois.toString().padLeft(2, '0')}';
+    final primesDuMois = primes.where((p) => p.appliqueAu(moisCle)).toList();
+
     final pdf = pw.Document();
     pdf.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
@@ -53,13 +57,13 @@ class PdfService {
       footer: (ctx) => _footer(ctx),
       build: (ctx) => [
         _resume(gardesMois, tauxHoraire, panierRepas, indemnitesDimanche,
-            montantIdaj, primes, impotSource, annee),
+            montantIdaj, primesDuMois, impotSource, annee),
         pw.SizedBox(height: 16),
         _tableGardes(gardesMois, tauxHoraire, panierRepas,
             indemnitesDimanche, montantIdaj),
         pw.SizedBox(height: 16),
         _detailCalcul(gardesMois, tauxHoraire, panierRepas,
-            indemnitesDimanche, montantIdaj, primes, impotSource, annee, mois),
+            indemnitesDimanche, montantIdaj, primesDuMois, impotSource, annee, mois),
       ],
     ));
 
@@ -412,7 +416,16 @@ class PdfService {
     final gsTrav = gardes.where((g) => !g.jourNonTravaille).toList();
     final brut = Calculs.totalBrut(gsTrav, taux: tauxHoraire, panier: panierRepas,
         indDimanche: indemnitesDimanche, montantIdaj: montantIdaj);
-    final primesAnnuelles = primes.fold(0.0, (s, p) => s + p.montant) * 12;
+    // Pour les primes datées : somme toutes celles de l'année concernée.
+    // Pour les primes non datées (rétrocompat) : * 12 (supposées récurrentes).
+    final anneeStr = annee.toString();
+    final primesAnneeSpecifique = primes
+        .where((p) => p.mois != null && p.mois!.startsWith('$anneeStr-'))
+        .fold(0.0, (s, p) => s + p.montant);
+    final primesLegacy = primes
+        .where((p) => p.mois == null)
+        .fold(0.0, (s, p) => s + p.montant) * 12;
+    final primesAnnuelles = primesAnneeSpecifique + primesLegacy;
     final brutTotal = brut + primesAnnuelles;
     final net = Calculs.netEstime(brutTotal);
     final impot = impotSource > 0 ? net * (impotSource / 100) : 0.0;

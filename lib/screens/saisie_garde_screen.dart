@@ -70,6 +70,11 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
   bool _speechAvailable = false;
   bool _ecoute = false;
   bool _ttsActif = false;
+  // Protège les transitions d'état concurrentes entre les callbacks
+  // onStatus/onResult de speech_to_text (évite les setState en conflit).
+  bool _transitionVocaleEnCours = false;
+  // Cause du dernier échec d'init (permission refusée, non supporté, etc.).
+  String? _derniereErreurVocale;
   String _texteVocal = '';
   String _etatConv = ''; // état courant de la conversation
   String _articleEnAttente = ''; // article dont on attend le prix
@@ -85,9 +90,13 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     await _tts.setPitch(1.0);
     await _tts.setVolume(1.0);
     // Important: évite la coupure sur les points intermédiaires
-    try { await _tts.setSharedInstance(true); } catch (_) {}
+    try { await _tts.setSharedInstance(true); } catch (e) {
+      debugPrint('TTS setSharedInstance : $e');
+    }
     // Fait que await _tts.speak() attende vraiment la fin de la synthèse
-    try { await _tts.awaitSpeakCompletion(true); } catch (_) {}
+    try { await _tts.awaitSpeakCompletion(true); } catch (e) {
+      debugPrint('TTS awaitSpeakCompletion : $e');
+    }
     // Cherche automatiquement la meilleure voix Google française
     try {
       final voices = await _tts.getVoices as List?;
@@ -109,19 +118,70 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           });
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('TTS getVoices/setVoice : $e');
+    }
     _tts.setCompletionHandler(() {
       if (mounted) setState(() => _ttsActif = false);
     });
-    _speechAvailable = await _speech.initialize(
-      onStatus: (status) {
-        if ((status == 'done' || status == 'notListening') && mounted) {
-          setState(() => _ecoute = false);
-        }
-      },
-      onError: (e) {
-        if (mounted) setState(() => _ecoute = false);
-      },
+    try {
+      _speechAvailable = await _speech.initialize(
+        onStatus: (status) {
+          if ((status == 'done' || status == 'notListening') && mounted) {
+            // Mutex : évite que onStatus et onResult mettent _ecoute = false en double
+            if (_transitionVocaleEnCours) return;
+            _transitionVocaleEnCours = true;
+            setState(() => _ecoute = false);
+            _transitionVocaleEnCours = false;
+          }
+        },
+        onError: (e) {
+          _derniereErreurVocale = e.errorMsg;
+          if (mounted) {
+            if (_transitionVocaleEnCours) return;
+            _transitionVocaleEnCours = true;
+            setState(() => _ecoute = false);
+            _transitionVocaleEnCours = false;
+          }
+        },
+      );
+      if (!_speechAvailable) {
+        _derniereErreurVocale ??= 'permission_or_unsupported';
+      }
+    } catch (e) {
+      _speechAvailable = false;
+      _derniereErreurVocale = e.toString();
+      debugPrint('STT initialize : $e');
+    }
+  }
+
+  /// Affiche une boîte de dialogue explicative si le micro n'est pas disponible.
+  /// Plus clair qu'un simple snackbar "Micro non disponible".
+  Future<void> _afficherDialogueMicroIndisponible() async {
+    if (!mounted) return;
+    final raison = _derniereErreurVocale ?? '';
+    final estPermission = raison.contains('permission') ||
+        raison.contains('denied') ||
+        raison == 'permission_or_unsupported';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Micro indisponible'),
+        content: Text(
+          estPermission
+              ? 'La reconnaissance vocale nécessite l\'accès au microphone.\n\n'
+                  'Va dans Réglages → Applications → Ambu Time → Autorisations, '
+                  'puis active le Microphone.'
+              : 'La reconnaissance vocale n\'est pas disponible sur cet appareil.\n\n'
+                  'Détail : $raison',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -204,10 +264,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     }
     if (!_speechAvailable) await _initSpeech();
     if (!_speechAvailable) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Micro non disponible')));
-      }
+      await _afficherDialogueMicroIndisponible();
       return;
     }
     _etatConv = 'date';
@@ -320,8 +377,14 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           await _parler('Désolé, nous allons reprendre.');
         }
       } else if (contientDateExplicite) {
-        // Correction de date
+        // Correction de date — sauvegarde l'ancienne valeur pour rollback
+        final ancienne = _date;
         _analyserVoix(rep);
+        if (!_dateEstAcceptable(_date)) {
+          setState(() => _date = ancienne); // rollback
+          await _parler('Erreur, la date est incorrecte. On ne peut pas enregistrer une date future.');
+          return;
+        }
         final moisN = ['','janvier','fevrier','mars','avril','mai','juin',
             'juillet','aout','septembre','octobre','novembre','decembre'];
         final jour = _date.day == 1 ? 'premier' : '${_date.day}';
@@ -970,6 +1033,10 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       case 'conge_debut':
         {
           final dateD = _parseDate(rep);
+          if (!_dateEstAcceptable(dateD)) {
+            await _parler('Erreur, la date est incorrecte. On ne peut pas enregistrer une date future. Quel est le premier jour ?');
+            return;
+          }
           setState(() => _date = dateD);
           final moisNCD = ['','janvier','fevrier','mars','avril','mai','juin',
               'juillet','aout','septembre','octobre','novembre','decembre'];
@@ -1001,6 +1068,10 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           dateFin = dateDebutSaved.add(Duration(days: nbJoursTotal - 1));
         } else {
           dateFin = _parseDate(rep);
+        }
+        if (!_dateEstAcceptable(dateFin)) {
+          await _parler('Erreur, la date de fin est incorrecte. On ne peut pas enregistrer une date future. Quel est le dernier jour des congés ?');
+          return;
         }
         setState(() {
           _date = dateDebutSaved;
@@ -1324,6 +1395,10 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       _collegueCtrl.text = ''; _vehiculeCtrl.text = '';
       _isCongesPaies = false; _jourNonTravaille = false; _cpDateFin = null;
       _etatConv = '';
+      _pendingDateJour = null;
+      _pendingDateMois = null;
+      _pendingHeuresDate = null;
+      _articleEnAttente = '';
     });
   }
   /// Retourne true si la date est passée, aujourd'hui, ou dans le mois en cours.
@@ -1513,6 +1588,17 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                 collegue: garde.collegue, vehiculeUtilise: garde.vehiculeUtilise,
                 kmDomicileTravail: garde.kmDomicileTravail,
                 achats: achatsModifies,
+                // Conserve tous les autres champs
+                debutQuatorzaine: garde.debutQuatorzaine,
+                qualification: garde.qualification,
+                isCongesPaies: garde.isCongesPaies,
+                cpDateFin: garde.cpDateFin,
+                nbJoursCP: garde.nbJoursCP,
+                primeLongueDistance: garde.primeLongueDistance,
+                tauxHoraireUtilise: garde.tauxHoraireUtilise,
+                panierRepasUtilise: garde.panierRepasUtilise,
+                indemnitesDimancheUtilise: garde.indemnitesDimancheUtilise,
+                montantIdajUtilise: garde.montantIdajUtilise,
               );
               widget.onGardeModifiee!(gardeModifiee);
               _feedback('✓ $mc retiré du ${dateTarget.day}/${dateTarget.month}');
@@ -2304,6 +2390,17 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       primeLongueDistance: _avecLongueDistance && !_isCongesPaies ? _primeLongueDistance : 0,
       debutQuatorzaine: widget.debutQuatorzaine,
       qualification: widget.poste,
+      // Snapshot des paramètres : pour une nouvelle garde, utilise les valeurs
+      // courantes. Pour une garde éditée, préserve le snapshot existant (sinon
+      // une correction de typo écraserait les valeurs historiques).
+      tauxHoraireUtilise:
+          widget.gardeAModifier?.tauxHoraireUtilise ?? widget.tauxHoraire,
+      panierRepasUtilise:
+          widget.gardeAModifier?.panierRepasUtilise ?? widget.panierRepas,
+      indemnitesDimancheUtilise:
+          widget.gardeAModifier?.indemnitesDimancheUtilise ?? widget.indemnitesDimanche,
+      montantIdajUtilise:
+          widget.gardeAModifier?.montantIdajUtilise ?? widget.montantIdaj,
     );
   }
 

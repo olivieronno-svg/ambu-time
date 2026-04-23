@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politique de confidentialité – Ambu Time</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         max-width: 760px; margin: 40px auto; padding: 0 20px; color: #222; line-height: 1.6; }
+  h1 { color: #0a1628; border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+  h2 { color: #2563eb; margin-top: 32px; }
+  h3 { color: #333; margin-top: 20px; }
+  a { color: #2563eb; }
+  code { background: #f0f4fa; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+  .updated { color: #666; font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<h1>Politique de confidentialité</h1>
+<p class="updated">Dernière mise à jour : 23 avril 2026</p>
+
+<p>
+La présente politique explique comment l'application <strong>Ambu Time</strong>
+(« nous », « l'application ») collecte, utilise et protège les données personnelles
+de ses utilisateurs (« vous »).
+</p>
+
+<h2>1. Responsable du traitement</h2>
+<p>
+<strong>Éditeur :</strong> Onn-Off<br>
+<strong>Contact :</strong> <a href="mailto:onnoff1975@gmail.com">onnoff1975@gmail.com</a>
+</p>
+
+<h2>2. Données collectées</h2>
+
+<h3>2.1. Données saisies par l'utilisateur</h3>
+<ul>
+  <li>Données de gardes : dates, horaires, véhicules, collègues, achats, notes</li>
+  <li>Paramètres : taux horaire, primes, indemnités, configuration CCN</li>
+  <li>Planning prévisionnel</li>
+</ul>
+
+<h3>2.2. Données de compte (si vous vous connectez)</h3>
+<ul>
+  <li>Adresse email (via Google Sign-In ou Apple Sign-In)</li>
+  <li>Nom et photo de profil (facultatif, fourni par Google/Apple)</li>
+  <li>Identifiant unique Firebase</li>
+</ul>
+
+<h3>2.3. Données techniques</h3>
+<ul>
+  <li>Identifiant publicitaire Google (Advertising ID) – utilisé par AdMob</li>
+  <li>Informations de plantage et diagnostics (Firebase)</li>
+</ul>
+
+<h3>2.4. Ce que nous ne collectons pas</h3>
+<ul>
+  <li>Aucune donnée de géolocalisation précise</li>
+  <li>Aucune donnée de contacts</li>
+  <li>Aucun enregistrement audio permanent (le micro sert uniquement à la
+      reconnaissance vocale locale, traitée par l'OS)</li>
+</ul>
+
+<h2>3. Finalités du traitement</h2>
+<table style="border-collapse: collapse; width: 100%;">
+  <tr style="background: #f0f4fa;">
+    <th style="text-align: left; padding: 8px; border: 1px solid #ddd;">Donnée</th>
+    <th style="text-align: left; padding: 8px; border: 1px solid #ddd;">Finalité</th>
+    <th style="text-align: left; padding: 8px; border: 1px solid #ddd;">Base légale</th>
+  </tr>
+  <tr>
+    <td style="padding: 8px; border: 1px solid #ddd;">Gardes et paramètres</td>
+    <td style="padding: 8px; border: 1px solid #ddd;">Calcul de salaire, historique</td>
+    <td style="padding: 8px; border: 1px solid #ddd;">Exécution du service</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px; border: 1px solid #ddd;">Email, compte</td>
+    <td style="padding: 8px; border: 1px solid #ddd;">Authentification, sync multi-appareils</td>
+    <td style="padding: 8px; border: 1px solid #ddd;">Consentement de l'utilisateur</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px; border: 1px solid #ddd;">Advertising ID</td>
+    <td style="padding: 8px; border: 1px solid #ddd;">Affichage de publicités AdMob</td>
+    <td style="padding: 8px; border: 1px solid #ddd;">Intérêt légitime / Consentement</td>
+  </tr>
+  <tr>
+    <td style="padding: 8px; border: 1px solid #ddd;">Achats in-app</td>
+    <td style="padding: 8px; border: 1px solid #ddd;">Gestion de la version Pro</td>
+    <td style="padding: 8px; border: 1px solid #ddd;">Exécution du contrat</td>
+  </tr>
+</table>
+
+<h2>4. Stockage et sécurité</h2>
+<ul>
+  <li><strong>Local</strong> : toutes les données sont stockées sur votre appareil
+      via <code>SharedPreferences</code> (chiffrement au niveau du système
+      d'exploitation Android/iOS).</li>
+  <li><strong>Cloud (optionnel)</strong> : si vous vous connectez, vos données
+      sont synchronisées avec <em>Google Firebase Firestore</em>, hébergé dans
+      l'Union européenne et protégé par les règles de sécurité Firebase
+      (accès restreint au compte propriétaire).</li>
+</ul>
+
+<h2>5. Destinataires et sous-traitants</h2>
+<ul>
+  <li><strong>Google (Firebase, AdMob, Google Play Billing)</strong> — hébergement,
+      publicité, paiements. Voir
+      <a href="https://policies.google.com/privacy">policies.google.com/privacy</a></li>
+  <li><strong>Apple (Sign in with Apple, App Store)</strong> —
+      <a href="https://www.apple.com/legal/privacy/">apple.com/legal/privacy</a></li>
+  <li><strong>RevenueCat</strong> — gestion des abonnements Pro.
+      <a href="https://www.revenuecat.com/privacy">revenuecat.com/privacy</a></li>
+</ul>
+
+<h2>6. Durée de conservation</h2>
+<ul>
+  <li>Données locales : jusqu'à la désinstallation de l'app</li>
+  <li>Données cloud : jusqu'à la suppression du compte</li>
+  <li>Logs techniques Firebase : 14 jours (par défaut Google)</li>
+</ul>
+
+<h2>7. Vos droits (RGPD)</h2>
+<p>Conformément au Règlement Général sur la Protection des Données, vous avez le droit :</p>
+<ul>
+  <li>d'accéder à vos données</li>
+  <li>de les rectifier</li>
+  <li>de les effacer (droit à l'oubli)</li>
+  <li>de limiter leur traitement</li>
+  <li>à la portabilité (export JSON disponible dans l'app)</li>
+  <li>de retirer votre consentement à tout moment</li>
+  <li>d'introduire une réclamation auprès de la CNIL
+      (<a href="https://www.cnil.fr">www.cnil.fr</a>)</li>
+</ul>
+
+<p>
+Pour exercer ces droits, contactez-nous à
+<a href="mailto:onnoff1975@gmail.com">onnoff1975@gmail.com</a>.
+Vous pouvez également supprimer votre compte directement depuis l'application
+(Paramètres → Compte → Supprimer mon compte) ou via notre
+<a href="delete-account.html">page de suppression de compte</a>.
+</p>
+
+<h2>8. Cookies et traceurs</h2>
+<p>
+L'application n'utilise pas de cookies au sens strict. AdMob peut utiliser
+l'identifiant publicitaire Google pour personnaliser les annonces. Vous pouvez
+le réinitialiser à tout moment dans les réglages Android/iOS.
+</p>
+
+<h2>9. Modifications</h2>
+<p>
+Cette politique peut être modifiée. Toute modification substantielle sera
+notifiée dans l'application. La date en haut de cette page indique la dernière
+mise à jour.
+</p>
+
+<h2>10. Contact</h2>
+<p>
+Pour toute question : <a href="mailto:onnoff1975@gmail.com">onnoff1975@gmail.com</a>
+</p>
+
+</body>
+</html>

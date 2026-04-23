@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/auth_service.dart';
+import '../utils/cloud_sync_service.dart';
 import '../utils/excel_service.dart';
 import '../utils/pdf_service.dart';
 import 'package:flutter/material.dart';
@@ -28,9 +29,10 @@ class ParametresScreen extends StatefulWidget {
   final double kmDomicileTravail;
   final double congesAcquisAvant;
   final int modeCp;
+  final double brutPeriodeRef;
   final String poste;
   final Function(double, double, double, double, DateTime?,
-      List<PrimeMensuelle>, double, double, String, double, int) onParametresModifies;
+      List<PrimeMensuelle>, double, double, String, double, int, double) onParametresModifies;
   final Future<void> Function()? onSignInSuccess;
 
   const ParametresScreen({
@@ -48,6 +50,7 @@ class ParametresScreen extends StatefulWidget {
     required this.kmDomicileTravail,
     this.congesAcquisAvant = 0,
     this.modeCp = 0,
+    this.brutPeriodeRef = 0,
     required this.poste,
     this.debutQuatorzaine,
     this.onSignInSuccess,
@@ -65,6 +68,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
   late TextEditingController _impotCtrl;
   late TextEditingController _kmCtrl;
   late TextEditingController _congesCtrl;
+  late TextEditingController _brutPeriodeRefCtrl;
   late int _modeCp;
   late List<PrimeMensuelle> _primes;
   late String _poste;
@@ -83,6 +87,8 @@ class _ParametresScreenState extends State<ParametresScreen> {
         ? widget.kmDomicileTravail.toStringAsFixed(0) : '');
     _congesCtrl = TextEditingController(text: widget.congesAcquisAvant > 0
         ? widget.congesAcquisAvant.toStringAsFixed(1) : '');
+    _brutPeriodeRefCtrl = TextEditingController(text: widget.brutPeriodeRef > 0
+        ? widget.brutPeriodeRef.toStringAsFixed(2) : '');
     _modeCp = widget.modeCp;
     _primes = List.from(widget.primes);
     _poste = widget.poste;
@@ -94,6 +100,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
   void dispose() {
     _tauxCtrl.dispose(); _panierCtrl.dispose(); _dimancheCtrl.dispose();
     _idajCtrl.dispose(); _impotCtrl.dispose(); _kmCtrl.dispose(); _congesCtrl.dispose();
+    _brutPeriodeRefCtrl.dispose();
     super.dispose();
   }
 
@@ -101,6 +108,73 @@ class _ParametresScreenState extends State<ParametresScreen> {
     final pro = await PurchaseService.isPro();
     final tester = await Storage.isTesterPro();
     setState(() => _isPro = pro || tester);
+  }
+
+  /// Suppression du compte Firebase + données cloud + données locales.
+  /// Obligatoire par Google Play depuis 2024 pour toute app avec compte.
+  Future<void> _confirmerSuppressionCompte() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer le compte ?'),
+        content: const Text(
+          'Cette action est irréversible. Elle va :\n\n'
+          '• Supprimer définitivement ton compte Ambu Time\n'
+          '• Effacer toutes tes données synchronisées (gardes, paramètres)\n'
+          '• Effacer les données stockées sur cet appareil\n\n'
+          'Les achats Pro restent liés à ton compte Google Play et peuvent être restaurés.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.colorRed),
+            child: const Text('Supprimer définitivement'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    // 1) Supprime les données cloud (tant que le compte existe encore)
+    await CloudSyncService.deleteCloudData();
+
+    // 2) Supprime le compte Firebase
+    final result = await AuthService.deleteAccount();
+    if (!mounted) return;
+
+    if (result == 'reauth') {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Reconnecte-toi puis retente la suppression (Firebase '
+            'exige une authentification récente).'),
+        duration: Duration(seconds: 6),
+        backgroundColor: Colors.orange,
+      ));
+      return;
+    }
+
+    if (result != true) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Impossible de supprimer le compte. Réessaie plus tard.'),
+        backgroundColor: Colors.red,
+      ));
+      return;
+    }
+
+    // 3) Efface les données locales (déclenché aussi par le listener authStateChanges
+    // dans main.dart, mais on le fait explicitement pour être sûr).
+    await Storage.effacerDonneesUtilisateur();
+
+    if (!mounted) return;
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Compte et données supprimés.'),
+      backgroundColor: Colors.green,
+    ));
   }
 
   Future<void> _selectDateQuatorzaine() async {
@@ -134,6 +208,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
       _poste,
       _parse(_congesCtrl, 0),
       _modeCp,
+      _parse(_brutPeriodeRefCtrl, 0),
     );
     ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Paramètres sauvegardés !')));
@@ -266,62 +341,108 @@ class _ParametresScreenState extends State<ParametresScreen> {
     final nomCtrl = TextEditingController(text: prime?.nom ?? '');
     final montantCtrl = TextEditingController(
         text: prime != null ? prime.montant.toStringAsFixed(2) : '');
+    // Mois par défaut : le mois actuel de la prime, ou le mois courant pour les nouvelles
+    final now = DateTime.now();
+    String moisSelectionne = prime?.mois ??
+        '${now.year}-${now.month.toString().padLeft(2, '0')}';
+
     showModalBottomSheet(
       context: context, isScrollControlled: true,
       backgroundColor: const Color(0xFFF5C4B3),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text(prime == null ? 'Nouvelle prime' : 'Modifier la prime',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600,
-                    color: Color(0xFF711B0C))),
-            if (prime != null)
-              GestureDetector(
-                onTap: () { Navigator.pop(ctx);
-                  setState(() => _primes.removeWhere((p) => p.id == prime.id)); },
-                child: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(left: 20, right: 20, top: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+          child: Column(mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text(prime == null ? 'Nouvelle prime' : 'Modifier la prime',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600,
+                      color: Color(0xFF711B0C))),
+              if (prime != null)
+                GestureDetector(
+                  onTap: () { Navigator.pop(ctx);
+                    setState(() => _primes.removeWhere((p) => p.id == prime.id)); },
+                  child: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
+                ),
+            ]),
+            const SizedBox(height: 16),
+            TextField(controller: nomCtrl, autofocus: true,
+              style: const TextStyle(color: Color(0xFF4A1B0C)),
+              decoration: InputDecoration(
+                  labelText: 'Nom de la prime',
+                  labelStyle: const TextStyle(color: Color(0xFF993C1D)),
+                  hintText: 'Ex: Prime qualité...',
+                  hintStyle: const TextStyle(color: Color(0xFFD85A30)))),
+            const SizedBox(height: 12),
+            TextField(controller: montantCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: const TextStyle(color: Color(0xFF4A1B0C)),
+              decoration: InputDecoration(
+                  labelText: 'Montant (€)',
+                  labelStyle: const TextStyle(color: Color(0xFF993C1D)),
+                  suffixText: '€')),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () async {
+                final parts = moisSelectionne.split('-');
+                final initDate = DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
+                final picked = await showDatePicker(
+                  context: ctx,
+                  initialDate: initDate,
+                  firstDate: DateTime(2020, 1, 1),
+                  lastDate: DateTime(now.year + 2, 12, 31),
+                  locale: const Locale('fr', 'FR'),
+                  helpText: 'Mois d\'application de la prime',
+                );
+                if (picked != null) {
+                  setModalState(() {
+                    moisSelectionne = '${picked.year}-${picked.month.toString().padLeft(2, '0')}';
+                  });
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF993C1D).withValues(alpha: 0.4)),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.calendar_month, size: 18, color: Color(0xFF711B0C)),
+                  const SizedBox(width: 10),
+                  Text('Mois : $moisSelectionne',
+                      style: const TextStyle(fontSize: 14, color: Color(0xFF4A1B0C),
+                          fontWeight: FontWeight.w500)),
+                ]),
               ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(width: double.infinity, child: ElevatedButton(
+              onPressed: () {
+                final nom = nomCtrl.text.trim();
+                if (nom.isEmpty) return;
+                final montant = double.tryParse(montantCtrl.text.replaceAll(',', '.')) ?? 0;
+                if (prime == null) {
+                  setState(() => _primes.add(PrimeMensuelle(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      nom: nom, montant: montant, mois: moisSelectionne)));
+                } else {
+                  setState(() {
+                    prime.nom = nom;
+                    prime.montant = montant;
+                    prime.mois = moisSelectionne;
+                  });
+                }
+                Navigator.pop(ctx);
+              },
+              child: Text(prime == null ? 'Ajouter' : 'Mettre à jour',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            )),
           ]),
-          const SizedBox(height: 16),
-          TextField(controller: nomCtrl, autofocus: true,
-            style: const TextStyle(color: Color(0xFF4A1B0C)),
-            decoration: InputDecoration(
-                labelText: 'Nom de la prime',
-                labelStyle: const TextStyle(color: Color(0xFF993C1D)),
-                hintText: 'Ex: Prime qualité...',
-                hintStyle: const TextStyle(color: Color(0xFFD85A30)))),
-          const SizedBox(height: 12),
-          TextField(controller: montantCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(color: Color(0xFF4A1B0C)),
-            decoration: InputDecoration(
-                labelText: 'Montant mensuel (€)',
-                labelStyle: const TextStyle(color: Color(0xFF993C1D)),
-                suffixText: '€')),
-          const SizedBox(height: 16),
-          SizedBox(width: double.infinity, child: ElevatedButton(
-            onPressed: () {
-              final nom = nomCtrl.text.trim();
-              if (nom.isEmpty) return;
-              final montant = double.tryParse(montantCtrl.text.replaceAll(',', '.')) ?? 0;
-              if (prime == null) {
-                setState(() => _primes.add(PrimeMensuelle(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    nom: nom, montant: montant)));
-              } else {
-                setState(() { prime.nom = nom; prime.montant = montant; });
-              }
-              Navigator.pop(ctx);
-            },
-            child: Text(prime == null ? 'Ajouter' : 'Mettre à jour',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-          )),
-        ]),
+        ),
       ),
     );
   }
@@ -484,6 +605,16 @@ class _ParametresScreenState extends State<ParametresScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                     )),
+                    const SizedBox(height: 8),
+                    SizedBox(width: double.infinity, child: TextButton.icon(
+                      onPressed: _confirmerSuppressionCompte,
+                      icon: const Icon(Icons.delete_forever, size: 16),
+                      label: const Text('Supprimer mon compte'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.colorRed,
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                      ),
+                    )),
                   ]),
                 );
               },
@@ -608,6 +739,10 @@ class _ParametresScreenState extends State<ParametresScreen> {
                     style: TextStyle(fontSize: 10, color: AppTheme.textTertiary)),
                 const SizedBox(height: 8),
                 _modeCpSelector(),
+                const SizedBox(height: 12),
+                _paramField('Brut période de référence (€)',
+                    'Optionnel — cumul brut juin N-1 à mai N pour un calcul CP exact',
+                    _brutPeriodeRefCtrl, '€'),
               ]),
             ),
 

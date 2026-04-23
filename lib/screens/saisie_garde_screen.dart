@@ -1,4 +1,4 @@
-﻿
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -73,6 +73,10 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
   String _texteVocal = '';
   String _etatConv = ''; // état courant de la conversation
   String _articleEnAttente = ''; // article dont on attend le prix
+  // ── Données en attente pour l'étape 'date_annee' ─────────────────
+  int? _pendingDateJour;
+  int? _pendingDateMois;
+  List<List<int>>? _pendingHeuresDate;
 
   Future<void> _initSpeech() async {
     // Configuration TTS — sélection automatique de la meilleure voix
@@ -96,7 +100,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           if (!locale.contains('fr')) continue;
           if (name.contains('wavenet')) { best = v as Map; break; }
           if (name.contains('google') && best == null) best = v as Map;
-          if (best == null) best = v as Map;
+          best ??= v as Map;
         }
         if (best != null) {
           await _tts.setVoice({
@@ -154,9 +158,11 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       },
       listenFor: const Duration(seconds: 45),
       pauseFor: const Duration(seconds: 5),
-      partialResults: true,
-      cancelOnError: false,
-      listenMode: ListenMode.dictation,
+      listenOptions: SpeechListenOptions(
+        partialResults: true,
+        cancelOnError: false,
+        listenMode: ListenMode.dictation,
+      ),
     );
   }
 
@@ -198,8 +204,10 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     }
     if (!_speechAvailable) await _initSpeech();
     if (!_speechAvailable) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Micro non disponible')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Micro non disponible')));
+      }
       return;
     }
     _etatConv = 'date';
@@ -222,7 +230,11 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         tSav.contains('sauvegarde') || tSav.contains('enregistre')) {
       setState(() => _etatConv = '');
       if (_checkCPChevauchement()) return;
-      _enregistrerGarde();
+      final ok = _enregistrerGarde();
+      if (!ok) {
+        await _parler('Erreur, impossible d enregistrer : heure de debut et de fin identiques.');
+        return;
+      }
       await _parler('Parfait, garde enregistree !');
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) _reinitialiserFormulaire();
@@ -245,7 +257,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         t.contains('retour') || t.contains('recommence') ||
         t.contains('modifier') || t.contains('changer') ||
         t.contains('pas ca') || t.contains('pas correct') || t.contains('pas bon') ||
-        (t.contains('non') && (t.contains('ca') || t.contains('pas') || t.contains('correct')));
+        (t.contains('non') && (t.contains('ca') || t.contains('correct')));
 
     if (estCorrection) {
       // Détecte si la phrase contient des heures (Xh à Yh / de X à Y)
@@ -449,7 +461,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             .map((g) => g.id)
             .toList();
         if (cpIds.isNotEmpty && widget.onSupprimerGardeId != null) {
-          for (final id in cpIds) widget.onSupprimerGardeId!(id);
+          for (final id in cpIds) {
+            widget.onSupprimerGardeId!(id);
+          }
           _reinitialiserFormulaire();
           await _parler('Conges supprimes. Quelle garde dois-je inscrire ?');
         } else {
@@ -503,7 +517,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               .where((g) => g.isCongesPaies || g.jourNonTravaille)
               .map((g) => g.id).toList();
           if (cpIds.isNotEmpty && widget.onSupprimerGardeId != null) {
-            for (final id in cpIds) widget.onSupprimerGardeId!(id);
+            for (final id in cpIds) {
+              widget.onSupprimerGardeId!(id);
+            }
             _reinitialiserFormulaire();
             await _parler('Congés supprimés. Quelle garde dois-je inscrire ?');
           } else {
@@ -569,9 +585,37 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           const moisNoms2 = ['janvier','fevrier','mars','avril','mai','juin',
               'juillet','aout','septembre','octobre','novembre','decembre'];
           final contientMois = moisNoms2.any((m) => tDate.contains(m));
+          final contientAnnee = RegExp(r'\b20\d{2}\b').hasMatch(tDate);
+          if (contientMois && !contientAnnee) {
+            // Mois mentionné sans année → on doit demander l'année
+            final datePartielle = _parseDate(rep);
+            // Parse les heures si elles sont dans la même phrase
+            String tHDtmp = rep.toLowerCase().replaceAll('heures','h').replaceAll('heure','h')
+                .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a').replaceAll('â','a');
+            tHDtmp = tHDtmp.replaceAllMapped(RegExp(r'(\d{1,2})\s+h'), (m) => '${m.group(1)}h');
+            final hPending = <List<int>>[];
+            for (final mh in RegExp(r'(\d{1,2})h(\d{2})?').allMatches(tHDtmp)) {
+              final h = int.tryParse(mh.group(1) ?? '') ?? -1;
+              final mn = int.tryParse(mh.group(2) ?? '0') ?? 0;
+              if (h >= 0 && h <= 23) hPending.add([h, mn]);
+            }
+            _pendingDateJour = datePartielle.day;
+            _pendingDateMois = datePartielle.month;
+            _pendingHeuresDate = hPending;
+            final moisN = ['','janvier','fevrier','mars','avril','mai','juin',
+                'juillet','aout','septembre','octobre','novembre','decembre'];
+            final jourStr = datePartielle.day == 1 ? 'premier' : '${datePartielle.day}';
+            _etatConv = 'date_annee';
+            await _parler('Pour le $jourStr ${moisN[datePartielle.month]}, de quelle année ?');
+            return;
+          }
           if (contientMois) {
-            // Utilise _parseDate qui gère correctement les noms de mois
+            // Mois + année → utilise _parseDate
             final dateAvecMois = _parseDate(rep);
+            if (!_dateEstAcceptable(dateAvecMois)) {
+              await _parler('Erreur, la date est incorrecte. On ne peut pas enregistrer une garde future. Quelle garde dois-je inscrire ?');
+              return;
+            }
             setState(() => _date = dateAvecMois);
           } else {
             // Chiffre seul → jour du mois courant ("le 10" ou juste "10")
@@ -631,6 +675,61 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         } else {
           _etatConv = 'heures';
           await _parler('$conf Quels sont les horaires ?');
+        }
+        break;
+
+      case 'date_annee':
+        String tA = rep.toLowerCase()
+            .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a');
+        tA = _normaliserNombres(tA);
+        int? anneeTrouvee;
+        final m4 = RegExp(r'\b(20\d{2})\b').firstMatch(tA);
+        if (m4 != null) {
+          anneeTrouvee = int.tryParse(m4.group(1)!);
+        } else {
+          // Accepte "25" → 2025
+          final m2 = RegExp(r'\b(\d{2})\b').firstMatch(tA);
+          if (m2 != null) {
+            final n = int.tryParse(m2.group(1)!) ?? -1;
+            if (n >= 20 && n <= 99) anneeTrouvee = 2000 + n;
+          }
+        }
+        if (anneeTrouvee == null) {
+          await _parler('Je n\'ai pas compris l\'année. Pouvez-vous répéter, par exemple 2025 ?');
+          return;
+        }
+        final jP = _pendingDateJour ?? _date.day;
+        final moP = _pendingDateMois ?? _date.month;
+        final hP = _pendingHeuresDate ?? <List<int>>[];
+        final dateCible = DateTime(anneeTrouvee, moP, jP);
+        if (!_dateEstAcceptable(dateCible)) {
+          _pendingDateJour = null;
+          _pendingDateMois = null;
+          _pendingHeuresDate = null;
+          _etatConv = 'date';
+          await _parler('Erreur, la date est incorrecte. On ne peut pas enregistrer une garde future. Quelle garde dois-je inscrire ?');
+          return;
+        }
+        _pendingDateJour = null;
+        _pendingDateMois = null;
+        _pendingHeuresDate = null;
+        setState(() => _date = dateCible);
+        final moisNA = ['','janvier','fevrier','mars','avril','mai','juin',
+            'juillet','aout','septembre','octobre','novembre','decembre'];
+        final jourStr = jP == 1 ? 'premier' : '$jP';
+        final confA = 'Très bien, pour le $jourStr ${moisNA[moP]} $anneeTrouvee.';
+        if (hP.length >= 2) {
+          setState(() {
+            _debutHeureCtrl.text = hP[0][0].toString().padLeft(2,'0');
+            _debutMinCtrl.text   = hP[0][1].toString().padLeft(2,'0');
+            _finHeureCtrl.text   = hP[1][0].toString().padLeft(2,'0');
+            _finMinCtrl.text     = hP[1][1].toString().padLeft(2,'0');
+          });
+          _etatConv = 'pause';
+          await _parler('$confA De ${hP[0][0]} heures à ${hP[1][0]} heures, avez-vous fait une coupure ?');
+        } else {
+          _etatConv = 'heures';
+          await _parler('$confA Quels sont les horaires ?');
         }
         break;
 
@@ -928,7 +1027,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               .where((g) => g.isCongesPaies)
               .map((g) => g.id).toList();
           if (widget.onSupprimerGardeId != null) {
-            for (final id in cpIds) widget.onSupprimerGardeId!(id);
+            for (final id in cpIds) {
+              widget.onSupprimerGardeId!(id);
+            }
           }
           _etatConv = 'heures';
           await _parler('Conges annules. Quels sont les horaires ?');
@@ -980,12 +1081,14 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             }).firstOrNull;
             if (conflitCP != null) {
               await _parler('Attention, des congés payés sont déjà enregistrés sur cette période. Enregistrement annulé.');
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                 content: Text('⛔ Période déjà saisie en congés payés',
                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 backgroundColor: Colors.red,
                 duration: Duration(seconds: 4),
               ));
+              }
               return;
             }
             // CP-on-garde → alerte orale + demande confirmation
@@ -1002,7 +1105,11 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               return;
             }
           }
-          _enregistrerGarde();
+          final okConf = _enregistrerGarde();
+          if (!okConf) {
+            await _parler('Erreur, impossible d enregistrer : heure de debut et de fin identiques.');
+            return;
+          }
           await _parler(_isCongesPaies ? 'Congés payés enregistrés !' : 'Parfait, garde enregistrée !');
           Future.delayed(const Duration(milliseconds: 2000), () {
             if (mounted) _reinitialiserFormulaire();
@@ -1018,10 +1125,15 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       case 'confirmer_doublon':
         if (t.contains('oui') || t.contains('quand meme') || t.contains('confirme')) {
           setState(() => _etatConv = '');
-          _enregistrerGarde();
+          final okDbl = _enregistrerGarde();
+          if (!okDbl) {
+            await _parler('Erreur, impossible d enregistrer : heure de debut et de fin identiques.');
+            return;
+          }
           await _parler('Garde enregistrée !');
           Future.delayed(const Duration(milliseconds: 1800), () {
-            if (mounted) setState(() {
+            if (mounted) {
+              setState(() {
               _date = DateTime.now();
               _debutHeureCtrl.text = '07'; _debutMinCtrl.text = '00';
               _finHeureCtrl.text = '17'; _finMinCtrl.text = '00';
@@ -1031,6 +1143,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               _isCongesPaies = false; _jourNonTravaille = false; _cpDateFin = null;
               _etatConv = '';
             });
+            }
           });
         } else {
           setState(() {
@@ -1213,7 +1326,33 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       _etatConv = '';
     });
   }
-  void _enregistrerGarde() {
+  /// Retourne true si la date est passée, aujourd'hui, ou dans le mois en cours.
+  /// Les dates futures (autres mois ou années) sont refusées car spéculatives.
+  bool _dateEstAcceptable(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(d.year, d.month, d.day);
+    if (!target.isAfter(today)) return true; // passée ou aujourd'hui
+    // Future : acceptée uniquement si même mois + même année qu'aujourd'hui
+    return d.year == now.year && d.month == now.month;
+  }
+
+  bool _enregistrerGarde() {
+    // Validation : heure début == heure fin hors CP / jour non travaillé
+    if (!_jourNonTravaille && !_isCongesPaies) {
+      final dh = _val(_debutHeureCtrl, 23);
+      final dm = _val(_debutMinCtrl, 59);
+      final fh = _val(_finHeureCtrl, 23);
+      final fm = _val(_finMinCtrl, 59);
+      if (dh == fh && dm == fm) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('❌ Erreur, impossible à sauvegarder : heure de début et de fin identiques'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ));
+        return false;
+      }
+    }
     final g = _buildGarde();
     final estModif = widget.gardeAModifier != null;
     if (estModif) { widget.onGardeModifiee!(g); }
@@ -1223,6 +1362,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       backgroundColor: Colors.green,
       duration: Duration(seconds: 2),
     ));
+    return true;
   }
 
   void _analyserVoix(String texte) {
@@ -1448,14 +1588,15 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     final now = DateTime.now();
 
     // Jours relatifs simples
-    if (t.contains('aujourd') || t.contains('ce matin') || t.contains('ce soir'))
+    if (t.contains('aujourd') || t.contains('ce matin') || t.contains('ce soir')) {
       nouvellDate = now;
-    else if (t.contains('demain'))
+    } else if (t.contains('demain')) {
       nouvellDate = now.add(const Duration(days: 1));
-    else if (t.contains('hier'))
+    } else if (t.contains('hier')) {
       nouvellDate = now.subtract(const Duration(days: 1));
-    else if (t.contains('avant hier') || t.contains('avant-hier'))
+    } else if (t.contains('avant hier') || t.contains('avant-hier')) {
       nouvellDate = now.subtract(const Duration(days: 2));
+    }
 
     // Jours de la semaine relatifs — "lundi dernier", "vendredi dernier", "mardi prochain"
     if (nouvellDate == null) {
@@ -1515,14 +1656,15 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         if (mJseul != null) jourTrouve = int.tryParse(mJseul.group(1) ?? '');
       }
     }
-    if (jourTrouve != null && jourTrouve >= 1 && jourTrouve <= 31)
+    if (jourTrouve != null && jourTrouve >= 1 && jourTrouve <= 31) {
       nouvellDate = DateTime(_date.year, moisTrouve ?? _date.month, jourTrouve);
+    }
 
     if (nouvellDate != null) {
       final change = nouvellDate.day != _date.day || nouvellDate.month != _date.month;
       if (change) {
-        final dh = hUniq.length >= 1 ? hUniq[0][0] : 7;
-        final dm = hUniq.length >= 1 ? hUniq[0][1] : 0;
+        final dh = hUniq.isNotEmpty ? hUniq[0][0] : 7;
+        final dm = hUniq.isNotEmpty ? hUniq[0][1] : 0;
         final fh = hUniq.length >= 2 ? hUniq[1][0] : 17;
         final fm = hUniq.length >= 2 ? hUniq[1][1] : 0;
         setState(() {
@@ -1652,9 +1794,13 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         final modelesPeugeot = ['308', '207', '208', '301', '408', '508', '2008', '3008', '5008'];
         final modelesCitroen = ['c3', 'c4', 'c5', 'berlingo', 'jumpy', 'jumper'];
         final modelesRenault = ['clio', 'megane', 'scenic', 'laguna', 'trafic', 'master'];
-        if (modelesPeugeot.contains(veh.toLowerCase())) veh = 'Peugeot $veh';
-        else if (modelesCitroen.contains(veh.toLowerCase())) veh = 'Citroën $veh';
-        else if (modelesRenault.contains(veh.toLowerCase())) veh = 'Renault $veh';
+        if (modelesPeugeot.contains(veh.toLowerCase())) {
+          veh = 'Peugeot $veh';
+        } else if (modelesCitroen.contains(veh.toLowerCase())) {
+          veh = 'Citroën $veh';
+        } else if (modelesRenault.contains(veh.toLowerCase())) {
+          veh = 'Renault $veh';
+        }
         if (veh.isNotEmpty && !parasitesVeh.contains(veh.toLowerCase())) {
           _vehiculeCtrl.text = _capitaliser(veh);
           champsRemplis.add('véhicule');
@@ -1696,7 +1842,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           return false;
         }));
         if (retiresCount > 0) {
-          champsRemplis.add('retiré ${retiresCount}× $motCle');
+          champsRemplis.add('retiré $retiresCount× $motCle');
           unRetire = true;
         }
       }
@@ -1826,7 +1972,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             !exclus.contains(intitule.split(' ').first)) {
           _articleEnAttente = intitule;
           _etatConv = 'prix_achat';
-          _parler('Quel est le prix de ' + intitule + ' ?');
+          _parler('Quel est le prix de $intitule ?');
           return;
         }
         if (intitule.length > 1 && montant > 0 &&
@@ -1839,7 +1985,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               montant: montant,
             ));
           }
-          champsRemplis.add('${quantite > 1 ? "${quantite}× " : ""}${_capitaliser(intitule)} ${montant.toStringAsFixed(2)}€');
+          champsRemplis.add('${quantite > 1 ? "$quantite× " : ""}${_capitaliser(intitule)} ${montant.toStringAsFixed(2)}€');
         }
       }
     }
@@ -1952,6 +2098,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     _finHeureCtrl.dispose(); _finMinCtrl.dispose();
     _collegueCtrl.dispose(); _vehiculeCtrl.dispose();
     _longuePrimeCtrl.dispose();
+    _tts.stop();
+    _speech.stop();
     super.dispose();
   }
 
@@ -2012,7 +2160,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       .replaceAllMapped(RegExp(r'\bune\b'), (m) => '1');
   }
 
-  DateTime _parseDate(String rep) {
+  DateTime _parseDate(String rep, {int? yearOverride}) {
     String t = rep.toLowerCase()
         .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a')
         .replaceAll("'", ' ');
@@ -2020,21 +2168,26 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     if (t.contains('avant hier') || t.contains('avanthier')) return now.subtract(const Duration(days: 2));
     if (t.contains('hier')) return now.subtract(const Duration(days: 1));
     if (t.contains('aujourd') || t.contains('maintenant')) return now;
+    // Année explicite dans la phrase (ex: "13 juin 2025") ou passée en paramètre
+    final anneeMatch = RegExp(r'\b(20\d{2})\b').firstMatch(t);
+    final annee = yearOverride ?? (anneeMatch != null
+        ? int.tryParse(anneeMatch.group(1)!) ?? now.year
+        : now.year);
     // Protège les noms de mois avant la normalisation des nombres
     // (ex: 'septembre' contient 'sept', 'janvier' contient 'un', etc.)
-    const _moisPlaceholders = {
+    const moisPlaceholders = {
       'janvier': 'MOIS01', 'fevrier': 'MOIS02', 'mars': 'MOIS03',
       'avril': 'MOIS04', 'mai': 'MOIS05', 'juin': 'MOIS06',
       'juillet': 'MOIS07', 'aout': 'MOIS08', 'septembre': 'MOIS09',
       'octobre': 'MOIS10', 'novembre': 'MOIS11', 'decembre': 'MOIS12',
     };
-    for (final e in _moisPlaceholders.entries) {
+    for (final e in moisPlaceholders.entries) {
       t = t.replaceAll(e.key, e.value);
     }
     // Convertir les nombres écrits en chiffres
     t = _normaliserNombres(t);
     // Restaure les noms de mois
-    for (final e in _moisPlaceholders.entries) {
+    for (final e in moisPlaceholders.entries) {
       t = t.replaceAll(e.value, e.key);
     }
     final moisMap = {'janvier':1,'fevrier':2,'mars':3,'avril':4,'mai':5,'juin':6,
@@ -2049,29 +2202,30 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         final mR = RegExp(r'(?:le\s+)?(\d{1,2})(?:er|e|eme)?\s+' + entry.key).firstMatch(t);
         if (mR != null) {
           final jour = int.tryParse(mR.group(1) ?? '') ?? now.day;
-          return DateTime(now.year, entry.value, jour);
+          return DateTime(annee, entry.value, jour);
         }
         // Cherche aussi le chiffre seul après le mois : "mars 15"
         final mR2 = RegExp(entry.key + r'\s+(\d{1,2})').firstMatch(t);
         if (mR2 != null) {
           final jour = int.tryParse(mR2.group(1) ?? '') ?? now.day;
-          return DateTime(now.year, entry.value, jour);
+          return DateTime(annee, entry.value, jour);
         }
-        // Cherche un chiffre n'importe où dans la phrase
-        final mN2 = RegExp(r'\b(\d{1,2})\b').firstMatch(t);
+        // Cherche un chiffre n'importe où dans la phrase (hors année)
+        final tSansAnnee = t.replaceAll(RegExp(r'\b20\d{2}\b'), '');
+        final mN2 = RegExp(r'\b(\d{1,2})\b').firstMatch(tSansAnnee);
         if (mN2 != null) {
           final jour = int.tryParse(mN2.group(1) ?? '') ?? 1;
-          if (jour >= 1 && jour <= 31) return DateTime(now.year, entry.value, jour);
+          if (jour >= 1 && jour <= 31) return DateTime(annee, entry.value, jour);
         }
         // Mois seul → 1er du mois
-        return DateTime(now.year, entry.value, 1);
+        return DateTime(annee, entry.value, 1);
       }
     }
     // Nombre seul → jour du mois courant
     final mN = RegExp(r'\b(\d{1,2})\b').firstMatch(t);
     if (mN != null) {
       final j = int.tryParse(mN.group(1) ?? '') ?? now.day;
-      return DateTime(now.year, now.month, j);
+      return DateTime(annee, now.month, j);
     }
     return now;
   }
@@ -2117,8 +2271,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     final fh = _val(_finHeureCtrl, 23);   final fm = _val(_finMinCtrl, 59);
     final debut = DateTime(_date.year, _date.month, _date.day, dh, dm);
     var fin    = DateTime(_date.year, _date.month, _date.day, fh, fm);
-    if (!_jourNonTravaille && fin.isBefore(debut))
+    if (!_jourNonTravaille && fin.isBefore(debut)) {
       fin = fin.add(const Duration(days: 1));
+    }
     // Calcule le nombre de jours CP depuis la plage de dates
     int nbJoursCP = 0;
     if (_isCongesPaies) {
@@ -2274,7 +2429,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
   Widget _btnPM(IconData icon, VoidCallback onTap) => GestureDetector(
     onTap: onTap,
     child: Container(padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: AppTheme.blueAccent.withOpacity(0.2),
+      decoration: BoxDecoration(color: AppTheme.blueAccent.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(8)),
       child: Icon(icon, size: 18, color: AppTheme.blueAccent)),
   );
@@ -2331,15 +2486,15 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                     duration: const Duration(milliseconds: 300),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                     decoration: BoxDecoration(
-                      color: _ttsActif ? Colors.blue.withOpacity(0.9)
-                          : _ecoute ? Colors.red.withOpacity(0.9)
-                          : _etatConv.isNotEmpty ? AppTheme.blueAccent.withOpacity(0.9)
-                          : AppTheme.colorGreen.withOpacity(0.15),
+                      color: _ttsActif ? Colors.blue.withValues(alpha: 0.9)
+                          : _ecoute ? Colors.red.withValues(alpha: 0.9)
+                          : _etatConv.isNotEmpty ? AppTheme.blueAccent.withValues(alpha: 0.9)
+                          : AppTheme.colorGreen.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: _ttsActif ? Colors.blue
                           : _ecoute ? Colors.red
                           : _etatConv.isNotEmpty ? AppTheme.blueAccent
-                          : AppTheme.colorGreen.withOpacity(0.4)),
+                          : AppTheme.colorGreen.withValues(alpha: 0.4)),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(
@@ -2372,9 +2527,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppTheme.blueAccent.withOpacity(0.08),
+                    color: AppTheme.blueAccent.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.blueAccent.withOpacity(0.3)),
+                    border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     _ttsActif ? '🔊 Je réponds...'
@@ -2393,9 +2548,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppTheme.blueAccent.withOpacity(0.15),
+                    color: AppTheme.blueAccent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.blueAccent.withOpacity(0.4))),
+                    border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.4))),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.calendar_today, size: 12, color: AppTheme.blueAccent),
                     const SizedBox(width: 5),
@@ -2413,9 +2568,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppTheme.colorGreen.withOpacity(0.1),
+                  color: AppTheme.colorGreen.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.colorGreen.withOpacity(0.3)),
+                  border: Border.all(color: AppTheme.colorGreen.withValues(alpha: 0.3)),
                 ),
                 child: Row(children: [
                   Icon(Icons.record_voice_over, size: 14, color: AppTheme.colorGreen),
@@ -2433,9 +2588,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.08),
+                  color: Colors.red.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
@@ -2453,7 +2608,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
+                        color: Colors.white.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text('"$_texteVocal"',
@@ -2472,9 +2627,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(color: Colors.orange.withOpacity(0.15),
+                decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.orange.withOpacity(0.4))),
+                    border: Border.all(color: Colors.orange.withValues(alpha: 0.4))),
                 child: Row(children: [
                   const Icon(Icons.star_rounded, size: 16, color: Colors.orange),
                   const SizedBox(width: 8),
@@ -2511,7 +2666,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                   const SizedBox(height: 6),
                   ClipRRect(borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(value: prog, minHeight: 5,
-                      backgroundColor: AppTheme.blueAccent.withOpacity(0.15),
+                      backgroundColor: AppTheme.blueAccent.withValues(alpha: 0.15),
                       valueColor: AlwaysStoppedAnimation<Color>(AppTheme.blueAccent))),
                 ],
               ],
@@ -2537,9 +2692,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                 margin: const EdgeInsets.only(bottom: 6),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.withOpacity(0.4)),
+                  border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
                 ),
                 child: Row(children: [
                   const Icon(Icons.block, size: 14, color: Colors.red),
@@ -2566,11 +2721,11 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
                     color: _isCongesPaies
-                        ? const Color(0xFF1D9E75).withOpacity(0.15)
+                        ? const Color(0xFF1D9E75).withValues(alpha: 0.15)
                         : AppTheme.bgCard,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: _isCongesPaies
-                        ? const Color(0xFF1D9E75).withOpacity(0.5)
+                        ? const Color(0xFF1D9E75).withValues(alpha: 0.5)
                         : AppTheme.bgCardBorder),
                   ),
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -2605,9 +2760,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1D9E75).withOpacity(0.1),
+                          color: const Color(0xFF1D9E75).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFF1D9E75).withOpacity(0.3)),
+                          border: Border.all(color: const Color(0xFF1D9E75).withValues(alpha: 0.3)),
                         ),
                         child: Text('${_date.day}/${_date.month}/${_date.year}',
                             style: const TextStyle(fontSize: 13,
@@ -2634,11 +2789,11 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
                           color: _cpDateFin != null
-                              ? const Color(0xFF1D9E75).withOpacity(0.1)
+                              ? const Color(0xFF1D9E75).withValues(alpha: 0.1)
                               : AppTheme.bgCard,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: _cpDateFin != null
-                              ? const Color(0xFF1D9E75).withOpacity(0.3)
+                              ? const Color(0xFF1D9E75).withValues(alpha: 0.3)
                               : AppTheme.bgCardBorder),
                         ),
                         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -2663,7 +2818,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1D9E75).withOpacity(0.08),
+                    color: const Color(0xFF1D9E75).withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(children: [
@@ -2690,11 +2845,11 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
                     color: _jourNonTravaille
-                        ? Colors.orange.withOpacity(0.15)
+                        ? Colors.orange.withValues(alpha: 0.15)
                         : AppTheme.bgCard,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: _jourNonTravaille
-                        ? Colors.orange.withOpacity(0.5)
+                        ? Colors.orange.withValues(alpha: 0.5)
                         : AppTheme.bgCardBorder),
                   ),
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -2720,7 +2875,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                   child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
-                      color: AppTheme.blueAccent.withOpacity(0.15),
+                      color: AppTheme.blueAccent.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8)),
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     const Icon(Icons.timer_outlined, size: 13, color: AppTheme.blueAccent),
@@ -2786,7 +2941,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                   const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: AppTheme.amber.withOpacity(0.1),
+                    decoration: BoxDecoration(color: AppTheme.amber.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8)),
                     child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                       Icon(Icons.free_breakfast_outlined, size: 14, color: AppTheme.colorAmber),
@@ -2817,8 +2972,10 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                         style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                     _compteur(_panierRepasGarde.toStringAsFixed(2),
                       onMoins: () => setState(() {
-                        if (_panierRepasGarde >= 0.5) _panierRepasGarde = double.parse(
+                        if (_panierRepasGarde >= 0.5) {
+                          _panierRepasGarde = double.parse(
                             (_panierRepasGarde - 0.5).toStringAsFixed(2));
+                        }
                       }),
                       onPlus: () => setState(() => _panierRepasGarde = double.parse(
                           (_panierRepasGarde + 0.5).toStringAsFixed(2))),
@@ -2894,7 +3051,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppTheme.blueAccent.withOpacity(0.08),
+                    color: AppTheme.blueAccent.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(children: [
@@ -2921,9 +3078,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: AppTheme.blueAccent.withOpacity(0.15),
+                      color: AppTheme.blueAccent.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppTheme.blueAccent.withOpacity(0.3)),
+                      border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.3)),
                     ),
                     child: Row(children: [
                       const Icon(Icons.add, size: 13, color: AppTheme.blueAccent),
@@ -2940,9 +3097,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
-                      color: AppTheme.colorAmber.withOpacity(0.07),
+                      color: AppTheme.colorAmber.withValues(alpha: 0.07),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.colorAmber.withOpacity(0.2)),
+                      border: Border.all(color: AppTheme.colorAmber.withValues(alpha: 0.2)),
                     ),
                     child: Row(children: [
                       Icon(Icons.receipt_outlined, size: 14, color: AppTheme.colorAmber),
@@ -2959,7 +3116,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
-                            color: AppTheme.blueAccent.withOpacity(0.12),
+                            color: AppTheme.blueAccent.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Icon(Icons.edit_outlined, size: 13,
@@ -2974,7 +3131,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(5),
                           decoration: BoxDecoration(
-                            color: AppTheme.red.withOpacity(0.12),
+                            color: AppTheme.red.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Icon(Icons.delete_outline, size: 13,
@@ -3003,9 +3160,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             if (!_jourNonTravaille) Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: AppTheme.blueAccent.withOpacity(0.08),
+                color: AppTheme.blueAccent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.blueAccent.withOpacity(0.2)),
+                border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.2)),
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('Calcul automatique CCN',
@@ -3040,9 +3197,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             if (_jourNonTravaille) Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.08),
+                color: Colors.orange.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
               ),
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 const Icon(Icons.event_busy, size: 16, color: Colors.orange),
@@ -3084,7 +3241,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     return Row(children: [
       GestureDetector(onTap: onMoins,
         child: Container(padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: AppTheme.blueAccent.withOpacity(0.2),
+          decoration: BoxDecoration(color: AppTheme.blueAccent.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(8)),
           child: const Icon(Icons.remove, size: 16, color: AppTheme.blueAccent))),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -3092,7 +3249,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             fontWeight: FontWeight.w500, color: AppTheme.textPrimary))),
       GestureDetector(onTap: onPlus,
         child: Container(padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: AppTheme.blueAccent.withOpacity(0.2),
+          decoration: BoxDecoration(color: AppTheme.blueAccent.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(8)),
           child: const Icon(Icons.add, size: 16, color: AppTheme.blueAccent))),
     ]);

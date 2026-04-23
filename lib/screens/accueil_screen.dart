@@ -55,7 +55,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
             .toList()
           ..sort((a, b) => a.date.compareTo(b.date));
       });
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Erreur chargement planning : $e');
+    }
   }
 
   Future<void> _sauvegarderPlanning() async {
@@ -78,7 +80,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
 
     showModalBottomSheet(
       context: context, isScrollControlled: true,
-      backgroundColor: const Color(0xFFB5D4F4).withOpacity(0.97),
+      backgroundColor: const Color(0xFFB5D4F4).withValues(alpha: 0.97),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
@@ -119,9 +121,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF185FA5).withOpacity(0.3)),
+                    border: Border.all(color: const Color(0xFF185FA5).withValues(alpha: 0.3)),
                   ),
                   child: Row(children: [
                     const Icon(Icons.calendar_today, size: 16, color: Color(0xFF185FA5)),
@@ -150,9 +152,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF185FA5).withOpacity(0.3)),
+                  border: Border.all(color: const Color(0xFF185FA5).withValues(alpha: 0.3)),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Type de garde', style: TextStyle(fontSize: 10, color: Color(0xFF185FA5), fontWeight: FontWeight.w500)),
@@ -183,12 +185,12 @@ class _AccueilScreenState extends State<AccueilScreen> {
                           decoration: BoxDecoration(
                             color: typeGarde == t
                                 ? const Color(0xFF185FA5)
-                                : const Color(0xFF185FA5).withOpacity(0.08),
+                                : const Color(0xFF185FA5).withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: typeGarde == t
                                   ? const Color(0xFF185FA5)
-                                  : const Color(0xFF185FA5).withOpacity(0.2),
+                                  : const Color(0xFF185FA5).withValues(alpha: 0.2),
                             ),
                           ),
                           child: Text(t, style: TextStyle(
@@ -208,7 +210,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   labelText: 'Collègue prévu',
                   labelStyle: const TextStyle(color: Color(0xFF185FA5)),
                   prefixIcon: const Icon(Icons.person_outline, size: 18, color: Color(0xFF185FA5)),
-                  fillColor: Colors.white.withOpacity(0.7),
+                  fillColor: Colors.white.withValues(alpha: 0.7),
                 )),
               const SizedBox(height: 16),
 
@@ -321,9 +323,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppTheme.blueAccent.withOpacity(0.2),
+                    color: AppTheme.blueAccent.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.blueAccent.withOpacity(0.4)),
+                    border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.4)),
                   ),
                   child: Text(_badgePoste, style: const TextStyle(
                       color: AppTheme.blue, fontWeight: FontWeight.w500, fontSize: 12)),
@@ -354,11 +356,11 @@ class _AccueilScreenState extends State<AccueilScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppTheme.amber.withOpacity(0.1),
+                        color: AppTheme.amber.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(children: [
-                        Icon(Icons.info_outline, size: 14, color: AppTheme.amber.withOpacity(0.8)),
+                        Icon(Icons.info_outline, size: 14, color: AppTheme.amber.withValues(alpha: 0.8)),
                         const SizedBox(width: 6),
                         const Expanded(child: Text('Définissez la date de début dans Paramètres',
                             style: TextStyle(fontSize: 11, color: AppTheme.amber))),
@@ -374,15 +376,15 @@ class _AccueilScreenState extends State<AccueilScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppTheme.amber.withOpacity(0.12),
+                    color: AppTheme.amber.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.amber.withOpacity(0.5)),
+                    border: Border.all(color: AppTheme.amber.withValues(alpha: 0.5)),
                   ),
                   child: Row(children: [
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppTheme.amber.withOpacity(0.2),
+                        color: AppTheme.amber.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(Icons.warning_amber_rounded, size: 20, color: AppTheme.colorAmber),
@@ -404,15 +406,15 @@ class _AccueilScreenState extends State<AccueilScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppTheme.red.withOpacity(0.1),
+                    color: AppTheme.red.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.red.withOpacity(0.5)),
+                    border: Border.all(color: AppTheme.red.withValues(alpha: 0.5)),
                   ),
                   child: Row(children: [
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppTheme.red.withOpacity(0.2),
+                        color: AppTheme.red.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Icon(Icons.alarm_on_rounded, size: 20, color: AppTheme.colorRed),
@@ -532,7 +534,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   child: Container(
                     width: 34, height: 34,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(Icons.chevron_left, size: 20, color: Colors.white),
@@ -543,14 +545,14 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500, color: Colors.white)),
                   const SizedBox(height: 2),
                   Text('${gardesMois.length} garde${gardesMois.length > 1 ? "s" : ""} · ${totalH.toStringAsFixed(0)}h planifiées',
-                      style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.65))),
+                      style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.65))),
                 ]),
                 GestureDetector(
                   onTap: () => setState(() => _calendarMonth = DateTime(year, month + 1, 1)),
                   child: Container(
                     width: 34, height: 34,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(Icons.chevron_right, size: 20, color: Colors.white),
@@ -608,7 +610,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                 if (isToday) {
                   bgColor = const Color(0xFF185FA5);
                   textColor = Colors.white;
-                  dotColor = Colors.white.withOpacity(0.8);
+                  dotColor = Colors.white.withValues(alpha: 0.8);
                 } else if (hasGarde && isWe) {
                   bgColor = const Color(0xFFFEF3C7);
                   textColor = const Color(0xFF854F0B);
@@ -666,7 +668,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1D9E75).withOpacity(0.15),
+                    color: const Color(0xFF1D9E75).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text('${gardesMois.length} garde${gardesMois.length > 1 ? "s" : ""}',
@@ -675,7 +677,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
             ]),
           ),
 
-          if (!gardesMois.isEmpty)
+          if (gardesMois.isNotEmpty)
             ...gardesMois.map((g) {
               final isToday = g.date.year == now.year && g.date.month == now.month && g.date.day == now.day;
               final isWe = g.date.weekday >= 6;
@@ -724,7 +726,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: AppTheme.blueAccent.withOpacity(0.12),
+                            color: AppTheme.blueAccent.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(5),
                           ),
                           child: Text(g.typeGarde, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: AppTheme.blueAccent)),
@@ -803,7 +805,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
             decoration: BoxDecoration(
-              color: const Color(0xFFBA7517).withOpacity(0.15),
+              color: const Color(0xFFBA7517).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text('${feries.length} férié${feries.length > 1 ? "s" : ""}',
@@ -880,13 +882,13 @@ class _AccueilScreenState extends State<AccueilScreen> {
     return Expanded(child: Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(children: [
         Text(val, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white)),
         const SizedBox(height: 2),
-        Text(lbl, style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.6), letterSpacing: 0.3)),
+        Text(lbl, style: TextStyle(fontSize: 9, color: Colors.white.withValues(alpha: 0.6), letterSpacing: 0.3)),
       ]),
     ));
   }
@@ -896,9 +898,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
+        color: Colors.white.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF185FA5).withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFF185FA5).withValues(alpha: 0.3)),
       ),
       child: Column(children: [
         Text(label, style: const TextStyle(fontSize: 10, color: Color(0xFF185FA5), fontWeight: FontWeight.w500)),

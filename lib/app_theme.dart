@@ -182,7 +182,7 @@ class AppTheme {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: textColor.withOpacity(0.3)),
+          border: Border.all(color: textColor.withValues(alpha: 0.3)),
         ),
         child: Text(text,
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: textColor)),

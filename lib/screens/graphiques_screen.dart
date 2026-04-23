@@ -249,9 +249,10 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
               bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true,
                   getTitlesWidget: (val, meta) {
                     final idx = val.toInt();
-                    if (idx >= 0 && idx < donnees.length)
+                    if (idx >= 0 && idx < donnees.length) {
                       return Text(_nomMoisCourt(donnees[idx].mois),
                           style: TextStyle(fontSize: 10, color: AppTheme.textSecondary));
+                    }
                     return const Text('');
                   })),
               leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40,
@@ -286,15 +287,16 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
               }).toList(),
               isCurved: true, color: AppTheme.green, barWidth: 2.5,
               dotData: const FlDotData(show: true),
-              belowBarData: BarAreaData(show: true, color: AppTheme.green.withOpacity(0.1)),
+              belowBarData: BarAreaData(show: true, color: AppTheme.green.withValues(alpha: 0.1)),
             )],
             titlesData: FlTitlesData(
               bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true,
                   getTitlesWidget: (val, meta) {
                     final idx = val.toInt();
-                    if (idx >= 0 && idx < donnees.length)
+                    if (idx >= 0 && idx < donnees.length) {
                       return Text(_nomMoisCourt(donnees[idx].mois),
                           style: TextStyle(fontSize: 10, color: AppTheme.textSecondary));
+                    }
                     return const Text('');
                   })),
               leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40,
@@ -440,9 +442,10 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
               bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true,
                   getTitlesWidget: (val, meta) {
                     final idx = val.toInt();
-                    if (idx >= 0 && idx < derniers.length)
+                    if (idx >= 0 && idx < derniers.length) {
                       return Text(_nomMoisCourt(derniers[idx].mois),
                           style: TextStyle(fontSize: 10, color: AppTheme.textSecondary));
+                    }
                     return const Text('');
                   })),
               leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40,
@@ -468,7 +471,7 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: AppTheme.blueAccent.withOpacity(0.15),
+              color: AppTheme.blueAccent.withValues(alpha: 0.15),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             ),
             child: Row(children: [
@@ -534,7 +537,7 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
                 ]),
               ),
             ]);
-          }).toList(),
+          }),
         ]),
       ),
       const SizedBox(height: 12),
@@ -546,7 +549,7 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
           '${_nomMoisLong(donnees.reduce((a, b) => a.brut > b.brut ? a : b).mois)} ${donnees.reduce((a, b) => a.brut > b.brut ? a : b).annee}',
           '${donnees.reduce((a, b) => a.brut > b.brut ? a : b).brut.toStringAsFixed(0)} €',
           AppTheme.colorGreen,
-          const Color(0xFFC0DD97).withOpacity(0.2),
+          const Color(0xFFC0DD97).withValues(alpha: 0.2),
         )),
         const SizedBox(width: 10),
         Expanded(child: _podiumCard(
@@ -554,7 +557,7 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
           '${_nomMoisLong(donnees.reduce((a, b) => a.brut < b.brut ? a : b).mois)} ${donnees.reduce((a, b) => a.brut < b.brut ? a : b).annee}',
           '${donnees.reduce((a, b) => a.brut < b.brut ? a : b).brut.toStringAsFixed(0)} €',
           AppTheme.colorAmber,
-          const Color(0xFFFAC775).withOpacity(0.2),
+          const Color(0xFFFAC775).withValues(alpha: 0.2),
         )),
       ]),
     ]);
@@ -573,7 +576,7 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: bg, borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(titre, style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),

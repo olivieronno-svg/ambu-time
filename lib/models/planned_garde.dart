@@ -56,15 +56,15 @@ class PlannedGarde {
   };
 
   factory PlannedGarde.fromMap(Map<String, dynamic> m) => PlannedGarde(
-    id: m['id'],
-    date: DateTime.parse(m['date']),
-    heureDebutH: m['heureDebutH'] ?? 7,
-    heureDebutM: m['heureDebutM'] ?? 0,
-    heureFinH: m['heureFinH'] ?? 17,
-    heureFinM: m['heureFinM'] ?? 0,
-    notes: m['notes'],
-    collegue: m['collegue'],
-    confirme: m['confirme'] ?? false,
-    typeGarde: m['typeGarde'] ?? 'UPH Jour',
+    id: m['id'] as String? ?? '',
+    date: DateTime.tryParse(m['date'] as String? ?? '') ?? DateTime.now(),
+    heureDebutH: (m['heureDebutH'] as int?) ?? 7,
+    heureDebutM: (m['heureDebutM'] as int?) ?? 0,
+    heureFinH: (m['heureFinH'] as int?) ?? 17,
+    heureFinM: (m['heureFinM'] as int?) ?? 0,
+    notes: m['notes'] as String?,
+    collegue: m['collegue'] as String?,
+    confirme: (m['confirme'] as bool?) ?? false,
+    typeGarde: (m['typeGarde'] as String?) ?? 'UPH Jour',
   );
 }

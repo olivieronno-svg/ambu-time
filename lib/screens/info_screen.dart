@@ -65,9 +65,9 @@ class _InfoScreenState extends State<InfoScreen> {
                           margin: const EdgeInsets.only(right: 8),
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: AppTheme.colorGreen.withOpacity(0.15),
+                            color: AppTheme.colorGreen.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppTheme.colorGreen.withOpacity(0.4)),
+                            border: Border.all(color: AppTheme.colorGreen.withValues(alpha: 0.4)),
                           ),
                           child: Text('PRO', style: TextStyle(fontSize: 10,
                               fontWeight: FontWeight.w700, color: AppTheme.colorGreen)),
@@ -88,7 +88,7 @@ class _InfoScreenState extends State<InfoScreen> {
               padding: const EdgeInsets.all(14),
               decoration: AppTheme.cardDecoration(
                 borderColor: _isPro
-                    ? AppTheme.blueAccent.withOpacity(0.3)
+                    ? AppTheme.blueAccent.withValues(alpha: 0.3)
                     : AppTheme.bgCardBorder),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
@@ -101,7 +101,7 @@ class _InfoScreenState extends State<InfoScreen> {
                           color: _isPro ? AppTheme.textPrimary : AppTheme.textTertiary)),
                   if (_isPro) ...[
                     const Spacer(),
-                    AppTheme.badge('Pro', AppTheme.blueAccent.withOpacity(0.15), AppTheme.blueAccent),
+                    AppTheme.badge('Pro', AppTheme.blueAccent.withValues(alpha: 0.15), AppTheme.blueAccent),
                   ],
                 ]),
                 const SizedBox(height: 8),
@@ -168,9 +168,9 @@ class _InfoScreenState extends State<InfoScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppTheme.amber.withOpacity(0.08),
+                color: AppTheme.amber.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.amber.withOpacity(0.25)),
+                border: Border.all(color: AppTheme.amber.withValues(alpha: 0.25)),
               ),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Icon(Icons.info_outline, size: 16, color: AppTheme.colorAmber),
@@ -223,7 +223,7 @@ class _InfoScreenState extends State<InfoScreen> {
             border: Border.all(color: AppTheme.bgCardBorder)),
         child: Row(children: [
           Container(padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: AppTheme.blueAccent.withOpacity(0.1),
+            decoration: BoxDecoration(color: AppTheme.blueAccent.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8)),
             child: Icon(icon, size: 18, color: AppTheme.blueAccent)),
           const SizedBox(width: 12),

@@ -1,8 +1,12 @@
 
+import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 class PurchaseService {
-  static const String apiKey = 'goog_SJzfxsgcrYbioGEVeeZzgDqsxAd';
+  static const String apiKey = String.fromEnvironment(
+    'REVENUECAT_KEY',
+    defaultValue: 'goog_SJzfxsgcrYbioGEVeeZzgDqsxAd',
+  );
   static const String entitlementId = 'Onn-Off Pro';
 
   static Future<void> initialiser() async {
@@ -11,7 +15,7 @@ class PurchaseService {
       final config = PurchasesConfiguration(apiKey);
       await Purchases.configure(config);
     } catch (e) {
-      print('RevenueCat non disponible : $e');
+      debugPrint('RevenueCat non disponible : $e');
     }
   }
 
@@ -29,7 +33,7 @@ class PurchaseService {
       final offerings = await Purchases.getOfferings();
       if (offerings.current == null) return false;
       final package = offerings.current!.availablePackages.first;
-      await Purchases.purchasePackage(package);
+      await Purchases.purchase(PurchaseParams.package(package));
       return true;
     } catch (e) {
       return false;

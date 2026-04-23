@@ -1,6 +1,9 @@
 
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../utils/auth_service.dart';
 import '../utils/excel_service.dart';
 import '../utils/pdf_service.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +31,7 @@ class ParametresScreen extends StatefulWidget {
   final String poste;
   final Function(double, double, double, double, DateTime?,
       List<PrimeMensuelle>, double, double, String, double, int) onParametresModifies;
+  final Future<void> Function()? onSignInSuccess;
 
   const ParametresScreen({
     super.key,
@@ -46,6 +50,7 @@ class ParametresScreen extends StatefulWidget {
     this.modeCp = 0,
     required this.poste,
     this.debutQuatorzaine,
+    this.onSignInSuccess,
   });
 
   @override
@@ -202,8 +207,10 @@ class _ParametresScreenState extends State<ParametresScreen> {
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erreur export : $e'), backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -223,8 +230,10 @@ class _ParametresScreenState extends State<ParametresScreen> {
       json = await File(file.path!).readAsString();
     }
     if (json == null || json.trim().isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Fichier vide ou illisible'), backgroundColor: Colors.red));
+      }
       return;
     }
 
@@ -238,7 +247,8 @@ class _ParametresScreenState extends State<ParametresScreen> {
       if (resultat.startsWith('✓')) {
         // Informe l'utilisateur de relancer l'appli
         Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) showDialog(
+          if (mounted) {
+            showDialog(
             context: context,
             builder: (ctx) => AlertDialog(
               title: const Text('Importation réussie !'),
@@ -246,6 +256,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
               actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
             ),
           );
+          }
         });
       }
     }
@@ -366,6 +377,118 @@ class _ParametresScreenState extends State<ParametresScreen> {
               ]),
             ),
 
+            // ── Mon compte ─────────────────────────────────────────
+            _sectionTitle('Mon compte'),
+            StreamBuilder<User?>(
+              stream: FirebaseAuth.instance.authStateChanges(),
+              builder: (context, snapshot) {
+                final user = snapshot.data;
+                if (user == null) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: AppTheme.cardDecoration(),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(
+                        'Connectez-vous pour synchroniser vos données automatiquement sur tous vos appareils.',
+                        style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          try {
+                            final cred = await AuthService.signInWithGoogle();
+                            if (cred != null) await widget.onSignInSuccess?.call();
+                          } catch (e) {
+                            messenger.showSnackBar(SnackBar(
+                              content: Text('Erreur Google : $e'),
+                              backgroundColor: Colors.red,
+                              duration: const Duration(seconds: 8),
+                            ));
+                          }
+                        },
+                        icon: const Icon(Icons.login, size: 18),
+                        label: const Text('Continuer avec Google'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.colorBlue,
+                          side: BorderSide(color: AppTheme.colorBlue),
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                        ),
+                      )),
+                      if (!kIsWeb && Platform.isIOS) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(width: double.infinity, child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final cred = await AuthService.signInWithApple();
+                            if (cred != null) await widget.onSignInSuccess?.call();
+                          },
+                          icon: const Icon(Icons.apple, size: 20),
+                          label: const Text('Continuer avec Apple'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.black,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                          ),
+                        )),
+                      ],
+                    ]),
+                  );
+                }
+                // Connecté
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: AppTheme.cardDecoration(
+                      borderColor: AppTheme.colorGreen.withValues(alpha: 0.35)),
+                  child: Column(children: [
+                    Row(children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundImage: user.photoURL != null
+                            ? NetworkImage(user.photoURL!) : null,
+                        backgroundColor: AppTheme.blueAccent.withValues(alpha: 0.2),
+                        child: user.photoURL == null
+                            ? Icon(Icons.person, color: AppTheme.blueAccent) : null,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        if (user.displayName != null)
+                          Text(user.displayName!,
+                              style: TextStyle(fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary)),
+                        Text(user.email ?? 'Compte connecté',
+                            style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                      ])),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppTheme.colorGreen.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text('SYNC ✓',
+                            style: TextStyle(fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.colorGreen)),
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                      onPressed: () async { await AuthService.signOut(); },
+                      icon: const Icon(Icons.logout, size: 16),
+                      label: const Text('Se déconnecter'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.colorRed,
+                        side: BorderSide(color: AppTheme.colorRed),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                    )),
+                  ]),
+                );
+              },
+            ),
+
             // ── Version Pro ────────────────────────────────────────
             _sectionTitle('Version Pro'),
             Container(
@@ -373,15 +496,15 @@ class _ParametresScreenState extends State<ParametresScreen> {
               padding: const EdgeInsets.all(14),
               decoration: AppTheme.cardDecoration(
                 borderColor: _isPro
-                    ? AppTheme.colorGreen.withOpacity(0.4)
-                    : AppTheme.colorAmber.withOpacity(0.4)),
+                    ? AppTheme.colorGreen.withValues(alpha: 0.4)
+                    : AppTheme.colorAmber.withValues(alpha: 0.4)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   Text(_isPro ? 'Version Pro activée ✓' : 'Version gratuite',
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
                           color: _isPro ? AppTheme.colorGreen : AppTheme.textPrimary)),
                   if (_isPro)
-                    AppTheme.badge('PRO', AppTheme.colorGreen.withOpacity(0.15), AppTheme.colorGreen),
+                    AppTheme.badge('PRO', AppTheme.colorGreen.withValues(alpha: 0.15), AppTheme.colorGreen),
                 ]),
                 if (!_isPro) ...[
                   const SizedBox(height: 8),
@@ -391,10 +514,14 @@ class _ParametresScreenState extends State<ParametresScreen> {
                   const SizedBox(height: 12),
                   SizedBox(width: double.infinity, child: ElevatedButton(
                     onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       final ok = await PurchaseService.acheterPro();
-                      if (ok) { setState(() => _isPro = true);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Version Pro activée !'))); }
+                      if (!mounted) return;
+                      if (ok) {
+                        setState(() => _isPro = true);
+                        messenger.showSnackBar(
+                            const SnackBar(content: Text('Version Pro activée !')));
+                      }
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.colorAmber),
                     child: const Text('Passer à la version Pro — 2,99 €',
@@ -403,8 +530,10 @@ class _ParametresScreenState extends State<ParametresScreen> {
                   const SizedBox(height: 8),
                   GestureDetector(
                     onTap: () async {
+                      final messenger = ScaffoldMessenger.of(context);
                       final ok = await PurchaseService.restaurerAchats();
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      if (!mounted) return;
+                      messenger.showSnackBar(SnackBar(
                           content: Text(ok ? 'Achats restaurés !' : 'Aucun achat trouvé')));
                       if (ok) setState(() => _isPro = true);
                     },
@@ -434,9 +563,9 @@ class _ParametresScreenState extends State<ParametresScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        color: AppTheme.blueAccent.withOpacity(0.15),
+                        color: AppTheme.blueAccent.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppTheme.blueAccent.withOpacity(0.3)),
+                        border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.3)),
                       ),
                       child: Row(children: [
                         const Icon(Icons.calendar_today, size: 14, color: AppTheme.blueAccent),
@@ -502,9 +631,9 @@ class _ParametresScreenState extends State<ParametresScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: AppTheme.blueAccent.withOpacity(0.15),
+                          color: AppTheme.blueAccent.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppTheme.blueAccent.withOpacity(0.3)),
+                          border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.3)),
                         ),
                         child: const Row(children: [
                           Icon(Icons.add, size: 14, color: AppTheme.blueAccent),
@@ -528,7 +657,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         child: Row(children: [
                           Container(padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: Colors.amber.withOpacity(0.15),
+                            decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(8)),
                             child: const Icon(Icons.star_outline, size: 16, color: Colors.amber)),
                           const SizedBox(width: 12),
@@ -624,7 +753,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(14),
               decoration: AppTheme.cardDecoration(
-                  borderColor: AppTheme.blueAccent.withOpacity(0.3)),
+                  borderColor: AppTheme.blueAccent.withValues(alpha: 0.3)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Icon(Icons.backup_outlined, size: 16, color: AppTheme.blueAccent),
@@ -638,9 +767,14 @@ class _ParametresScreenState extends State<ParametresScreen> {
                 // Sauvegarde JSON
                 SizedBox(width: double.infinity, child: ElevatedButton.icon(
                   onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
                     try { await Storage.exporterDonnees(widget.gardes); }
-                    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red)); }
+                    catch (e) {
+                      if (mounted) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red));
+                      }
+                    }
                   },
                   icon: const Icon(Icons.backup_outlined, size: 16),
                   label: const Text('Sauvegarder (WhatsApp, Drive, Email...)'),
@@ -684,7 +818,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
                   label: const Text('Restaurer une sauvegarde'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppTheme.blueAccent,
-                    side: BorderSide(color: AppTheme.blueAccent.withOpacity(0.5)),
+                    side: BorderSide(color: AppTheme.blueAccent.withValues(alpha: 0.5)),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 )),
@@ -709,10 +843,10 @@ class _ParametresScreenState extends State<ParametresScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? AppTheme.blueAccent : AppTheme.blueAccent.withOpacity(0.1),
+          color: selected ? AppTheme.blueAccent : AppTheme.blueAccent.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: selected ? AppTheme.blueAccent
-              : AppTheme.blueAccent.withOpacity(0.3)),
+              : AppTheme.blueAccent.withValues(alpha: 0.3)),
         ),
         child: Column(children: [
           Text(code, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
@@ -720,7 +854,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
           const SizedBox(height: 2),
           Text(label, textAlign: TextAlign.center,
               style: TextStyle(fontSize: 9,
-                  color: selected ? Colors.white.withOpacity(0.85) : AppTheme.textSecondary)),
+                  color: selected ? Colors.white.withValues(alpha: 0.85) : AppTheme.textSecondary)),
         ]),
       ),
     );
@@ -747,7 +881,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: isSelected
-                ? AppTheme.blueAccent.withOpacity(0.12)
+                ? AppTheme.blueAccent.withValues(alpha: 0.12)
                 : AppTheme.bgCard,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: isSelected

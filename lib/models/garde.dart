@@ -156,11 +156,12 @@ class Garde {
 
   factory Garde.fromMap(Map<String, dynamic> map) {
     final achatsRaw = map['achats'] as List<dynamic>? ?? [];
+    final now = DateTime.now();
     return Garde(
-      id: map['id'],
-      date: DateTime.parse(map['date']),
-      heureDebut: DateTime.parse(map['heureDebut']),
-      heureFin: DateTime.parse(map['heureFin']),
+      id: map['id'] as String? ?? '',
+      date: DateTime.tryParse(map['date'] as String? ?? '') ?? now,
+      heureDebut: DateTime.tryParse(map['heureDebut'] as String? ?? '') ?? now,
+      heureFin: DateTime.tryParse(map['heureFin'] as String? ?? '') ?? now,
       jourNonTravaille: map['jourNonTravaille'] ?? false,
       collegue: map['collegue'],
       vehiculeUtilise: map['vehiculeUtilise'],
@@ -170,11 +171,13 @@ class Garde {
       panierRepasGarde: (map['panierRepasGarde'] ?? 0).toDouble(),
       avecPanier: map['avecPanier'] ?? true,
       debutQuatorzaine: map['debutQuatorzaine'] != null
-          ? DateTime.parse(map['debutQuatorzaine'])
+          ? DateTime.tryParse(map['debutQuatorzaine'] as String? ?? '')
           : null,
       qualification: map['qualification'] ?? 'dea',
       isCongesPaies: map['isCongesPaies'] ?? false,
-      cpDateFin: map['cpDateFin'] != null ? DateTime.parse(map['cpDateFin']) : null,
+      cpDateFin: map['cpDateFin'] != null
+          ? DateTime.tryParse(map['cpDateFin'] as String? ?? '')
+          : null,
       nbJoursCP: map['nbJoursCP'] ?? 1,
       primeLongueDistance: (map['primeLongueDistance'] ?? 0).toDouble(),
     );

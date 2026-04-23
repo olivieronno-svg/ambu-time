@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'utils/ad_service.dart';
+import 'utils/cloud_sync_service.dart';
+import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/accueil_screen.dart';
 import 'screens/saisie_garde_screen.dart';
@@ -18,12 +23,14 @@ import 'app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await PurchaseService.initialiser();
   runApp(const AmbulancierApp());
 }
 
 class AmbulancierApp extends StatefulWidget {
   const AmbulancierApp({super.key});
+  // ignore: library_private_types_in_public_api
   static _AmbulancierAppState? of(BuildContext context) =>
       context.findAncestorStateOfType<_AmbulancierAppState>();
   @override
@@ -159,31 +166,34 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     }
   }
 
-  void _ajouterGarde(Garde g) {
+  Future<void> _ajouterGarde(Garde g) async {
     setState(() { _gardes.insert(0, g); _gardeAModifier = null; });
-    Storage.sauvegarderGardes(_gardes);
-    setState(() => _currentIndex = 0);
+    await Storage.sauvegarderGardes(_gardes);
+    _syncToCloud();
+    if (mounted) setState(() => _currentIndex = 0);
   }
 
-  void _modifierGarde(Garde g) {
+  Future<void> _modifierGarde(Garde g) async {
     setState(() {
       final i = _gardes.indexWhere((e) => e.id == g.id);
       if (i != -1) _gardes[i] = g;
       _gardeAModifier = null;
     });
-    Storage.sauvegarderGardes(_gardes);
-    setState(() => _currentIndex = 0);
+    await Storage.sauvegarderGardes(_gardes);
+    _syncToCloud();
+    if (mounted) setState(() => _currentIndex = 0);
   }
 
-  void _supprimerGarde(String id) {
+  Future<void> _supprimerGarde(String id) async {
     setState(() => _gardes.removeWhere((g) => g.id == id));
-    Storage.sauvegarderGardes(_gardes);
+    await Storage.sauvegarderGardes(_gardes);
+    _syncToCloud();
   }
 
-  void _modifierParametres(double taux, double panier, double dimanche,
+  Future<void> _modifierParametres(double taux, double panier, double dimanche,
       double idaj, DateTime? debutQuatorzaine, List<PrimeMensuelle> primes,
       double impotSource, double kmDomicileTravail, String poste,
-      [double congesAcquisAvant = 0, int modeCp = 0]) {
+      [double congesAcquisAvant = 0, int modeCp = 0]) async {
     setState(() {
       _tauxHoraire = taux; _panierRepas = panier;
       _indemnitesDimanche = dimanche; _montantIdaj = idaj;
@@ -192,11 +202,134 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       _poste = poste; _congesAcquisAvant = congesAcquisAvant;
       _modeCp = modeCp;
     });
-    Storage.sauvegarderParametres(
+    await Storage.sauvegarderParametres(
       taux: taux, panier: panier, dimanche: dimanche, idaj: idaj,
       debutQuatorzaine: debutQuatorzaine, primes: primes,
       impotSource: impotSource, kmDomicileTravail: kmDomicileTravail,
       poste: poste, congesAcquisAvant: congesAcquisAvant, modeCp: modeCp,
+    );
+    _syncToCloud();
+  }
+
+  // ── Cloud sync ────────────────────────────────────────────────────────────
+
+  void _syncToCloud() {
+    SharedPreferences.getInstance().then((prefs) {
+      final planningRaw = prefs.getStringList('app_planning_v1') ?? [];
+      final planningMaps = planningRaw
+          .map((s) => Map<String, dynamic>.from(jsonDecode(s) as Map))
+          .toList();
+      return CloudSyncService.syncToCloud(
+        gardes: _gardes,
+        params: {
+          'taux': _tauxHoraire, 'panier': _panierRepas,
+          'dimanche': _indemnitesDimanche, 'idaj': _montantIdaj,
+          'debutQuatorzaine': _debutQuatorzaine,
+          'primes': _primes, 'impotSource': _impotSource,
+          'kmDomicileTravail': _kmDomicileTravail, 'poste': _poste,
+          'congesAcquisAvant': _congesAcquisAvant, 'modeCp': _modeCp,
+        },
+        planningMaps: planningMaps,
+      );
+    }).catchError((e, st) {
+      debugPrint('Sync cloud échouée : $e');
+    });
+  }
+
+  Future<void> _onSignInSuccess() async {
+    final hasCloud = await CloudSyncService.hasCloudData();
+    if (!hasCloud) { _syncToCloud(); return; }
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final restore = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.bgSecondary,
+        title: Text('Données cloud trouvées',
+            style: TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
+        content: Text(
+          'Des données existent dans le cloud pour ce compte.\n\n'
+          'Voulez-vous restaurer vos données depuis le cloud ou '
+          'conserver les données locales actuelles ?',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Conserver local'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.blueAccent),
+            child: const Text('Restaurer cloud', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (restore == true) {
+      await _restaurerDepuisCloud(messenger);
+    } else {
+      _syncToCloud();
+    }
+  }
+
+  Future<void> _restaurerDepuisCloud(ScaffoldMessengerState messenger) async {
+    final data = await CloudSyncService.fetchFromCloud();
+    if (data == null || !mounted) return;
+
+    final gardesRaw = (data['gardes'] as List<dynamic>? ?? []);
+    final gardes = gardesRaw
+        .map((m) => Garde.fromMap(Map<String, dynamic>.from(m as Map)))
+        .toList();
+
+    final p = data['parametres'] as Map<String, dynamic>? ?? {};
+    final primesRaw = p['primes'] as List<dynamic>? ?? [];
+    final primes = primesRaw
+        .map((m) => PrimeMensuelle.fromMap(Map<String, dynamic>.from(m as Map)))
+        .toList();
+    final debutStr = p['debutQuatorzaine'] as String?;
+    final debutQuatorzaine = debutStr != null ? DateTime.tryParse(debutStr) : null;
+
+    // Restaure le planning dans SharedPreferences
+    final planningRaw = (data['planning'] as List<dynamic>? ?? []);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('app_planning_v1',
+        planningRaw.map((m) => jsonEncode(m)).toList());
+
+    // Persiste localement
+    await Storage.sauvegarderGardes(gardes);
+    await Storage.sauvegarderParametres(
+      taux: (p['taux'] as num?)?.toDouble() ?? _tauxHoraire,
+      panier: (p['panier'] as num?)?.toDouble() ?? _panierRepas,
+      dimanche: (p['dimanche'] as num?)?.toDouble() ?? _indemnitesDimanche,
+      idaj: (p['idaj'] as num?)?.toDouble() ?? _montantIdaj,
+      debutQuatorzaine: debutQuatorzaine,
+      primes: primes,
+      impotSource: (p['impotSource'] as num?)?.toDouble() ?? _impotSource,
+      kmDomicileTravail: (p['kmDomicileTravail'] as num?)?.toDouble() ?? _kmDomicileTravail,
+      poste: p['poste'] as String? ?? _poste,
+      congesAcquisAvant: (p['congesAcquisAvant'] as num?)?.toDouble() ?? _congesAcquisAvant,
+      modeCp: p['modeCp'] as int? ?? _modeCp,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _gardes..clear()..addAll(gardes);
+      _tauxHoraire = (p['taux'] as num?)?.toDouble() ?? _tauxHoraire;
+      _panierRepas = (p['panier'] as num?)?.toDouble() ?? _panierRepas;
+      _indemnitesDimanche = (p['dimanche'] as num?)?.toDouble() ?? _indemnitesDimanche;
+      _montantIdaj = (p['idaj'] as num?)?.toDouble() ?? _montantIdaj;
+      _debutQuatorzaine = debutQuatorzaine;
+      _primes = primes;
+      _impotSource = (p['impotSource'] as num?)?.toDouble() ?? _impotSource;
+      _kmDomicileTravail = (p['kmDomicileTravail'] as num?)?.toDouble() ?? _kmDomicileTravail;
+      _poste = p['poste'] as String? ?? _poste;
+      _congesAcquisAvant = (p['congesAcquisAvant'] as num?)?.toDouble() ?? _congesAcquisAvant;
+      _modeCp = p['modeCp'] as int? ?? _modeCp;
+    });
+    messenger.showSnackBar(
+      const SnackBar(content: Text('✓ Données restaurées depuis le cloud')),
     );
   }
 
@@ -288,6 +421,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         primeAnnuelleCalculee: _primeAnnuelleCalculee,
         kmDomicileTravail: _kmDomicileTravail, poste: _poste,
         congesAcquisAvant: _congesAcquisAvant, modeCp: _modeCp,
+        onSignInSuccess: _onSignInSuccess,
       ),
       ImpotsScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
@@ -358,11 +492,11 @@ class _LateralNav extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isActive
                       ? _tabColors[i]
-                      : _tabColors[i].withOpacity(AppTheme.isDark ? 0.55 : 0.35),
+                      : _tabColors[i].withValues(alpha: AppTheme.isDark ? 0.55 : 0.35),
                   border: Border(
                     top: i == 0
                         ? BorderSide.none
-                        : BorderSide(color: Colors.white.withOpacity(0.2), width: 0.5),
+                        : BorderSide(color: Colors.white.withValues(alpha: 0.2), width: 0.5),
                     left: isActive
                         ? BorderSide(color: _tabTextColors[i], width: 2.5)
                         : BorderSide.none,
@@ -379,8 +513,8 @@ class _LateralNav extends StatelessWidget {
                         color: isActive
                             ? _tabTextColors[i]
                             : AppTheme.isDark
-                                ? Colors.white.withOpacity(0.9)
-                                : _tabTextColors[i].withOpacity(0.85),
+                                ? Colors.white.withValues(alpha: 0.9)
+                                : _tabTextColors[i].withValues(alpha: 0.85),
                         letterSpacing: 0.5,
                       ),
                     ),

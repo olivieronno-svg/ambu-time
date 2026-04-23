@@ -1,0 +1,62 @@
+{
+  "project_info": {
+    "project_number": "944165086970",
+    "project_id": "ambu-time",
+    "storage_bucket": "ambu-time.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:944165086970:android:3dd561df74ffc08c85cb43",
+        "android_client_info": {
+          "package_name": "com.onnoff.ambutime"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "944165086970-dar0nb909efe4j26gkm5adnk9so7aehg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.onnoff.ambutime",
+            "certificate_hash": "daac4294f663f768a5ce180c252738df66ffddae"
+          }
+        },
+        {
+          "client_id": "944165086970-gb8ussp6c3r013spnol68lv2st22s4hp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.onnoff.ambutime",
+            "certificate_hash": "4c16561090018ebf78d5a22f4ef21da2932a1e98"
+          }
+        },
+        {
+          "client_id": "944165086970-j655rd9vhb7oo8hsraba0sjjfign4244.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCeXJEeSNV6hJNyPGFhV5U3Xwr7ng-IihM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "944165086970-j655rd9vhb7oo8hsraba0sjjfign4244.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "944165086970-2c0eu4i0c0hk3o4qtp78ppq5i5jr971u.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.ambulancierApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

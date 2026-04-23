@@ -119,8 +119,10 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
         primes: widget.primes, impotSource: widget.impotSource,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur export : $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur export : $e')));
+      }
     }
     setState(() => _exportEnCours = false);
   }
@@ -167,8 +169,11 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   }
 
   void _retour() {
-    if (_mois != null) setState(() => _mois = null);
-    else if (_annee != null) setState(() => _annee = null);
+    if (_mois != null) {
+      setState(() => _mois = null);
+    } else if (_annee != null) {
+      setState(() => _annee = null);
+    }
   }
 
   @override
@@ -187,9 +192,9 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
-                      color: AppTheme.blueAccent.withOpacity(0.15),
+                      color: AppTheme.blueAccent.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.blueAccent.withOpacity(0.3)),
+                      border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.3)),
                     ),
                     child: Row(children: [
                       const Icon(Icons.arrow_back_ios, size: 11, color: AppTheme.blueAccent),
@@ -339,16 +344,16 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: AppTheme.blueAccent.withOpacity(0.1),
+                      color: AppTheme.blueAccent.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.blueAccent.withOpacity(0.3)),
+                      border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.3)),
                     ),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(_moisNoms[moisNum], style: TextStyle(
                           fontSize: 14, fontWeight: FontWeight.w700,
                           color: AppTheme.blueAccent)),
                       const SizedBox(height: 2),
-                      Text('${Calculs.formatHeures(hMois)}',
+                      Text(Calculs.formatHeures(hMois),
                           style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
                       if (nbCp > 0)
                         Text('🏖️ $nbCp j. CP',
@@ -388,12 +393,12 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: _isPro
-                        ? AppTheme.colorGreen.withOpacity(0.15)
-                        : AppTheme.blueAccent.withOpacity(0.1),
+                        ? AppTheme.colorGreen.withValues(alpha: 0.15)
+                        : AppTheme.blueAccent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: _isPro
-                        ? AppTheme.colorGreen.withOpacity(0.4)
-                        : AppTheme.blueAccent.withOpacity(0.3)),
+                        ? AppTheme.colorGreen.withValues(alpha: 0.4)
+                        : AppTheme.blueAccent.withValues(alpha: 0.3)),
                   ),
                   child: Row(children: [
                     Icon(_isPro ? Icons.picture_as_pdf : Icons.lock_outline,
@@ -548,7 +553,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                 decoration: BoxDecoration(color: dayBg, borderRadius: BorderRadius.circular(9)),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Text('${g.date.day}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: dayText, height: 1)),
-                  Text(moisNoms[g.date.month], style: TextStyle(fontSize: 8, color: dayText.withOpacity(0.7))),
+                  Text(moisNoms[g.date.month], style: TextStyle(fontSize: 8, color: dayText.withValues(alpha: 0.7))),
                 ]),
               ),
               if (!isLast)
@@ -566,7 +571,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   decoration: BoxDecoration(
                     color: cardBg,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: cardBorder.withOpacity(0.5)),
+                    border: Border.all(color: cardBorder.withValues(alpha: 0.5)),
                   ),
                   child: Row(children: [
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -592,7 +597,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                             const SizedBox(width: 4),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.red.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                              decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
                               child: const Text('⚠️ Conflit CP', style: TextStyle(fontSize: 8, color: Colors.red, fontWeight: FontWeight.w600)),
                             ),
                           ],

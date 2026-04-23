@@ -1,0 +1,63 @@
+workflows:
+  ios-workflow:
+    name: iOS Workflow
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: Codemagic
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.onnoff.ambutime
+      vars:
+        BUNDLE_ID: "com.onnoff.ambutime"
+        APP_STORE_APPLE_ID: 0000000000 # à remplacer par l'Apple ID numérique (cf App Store Connect)
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Install pods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+      - name: Set up signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Build ipa
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Testeurs internes
+
+  android-workflow:
+    name: Android Workflow
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      android_signing:
+        - keystore_reference
+      flutter: stable
+      vars:
+        PACKAGE_NAME: "com.onnoff.ambutime"
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Build AAB
+        script: |
+          flutter build appbundle --release
+    artifacts:
+      - build/**/outputs/**/*.aab
+      - build/**/outputs/**/mapping.txt

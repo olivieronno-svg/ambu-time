@@ -65,8 +65,10 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
         kmDomicileTravail: widget.kmDomicileTravail,
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur export : $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur export : $e')));
+      }
     }
     setState(() => _exportEnCours = false);
   }
@@ -118,10 +120,10 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
         : (widget.kmDomicileTravail * nbJoursTravailles);
 
     // ── Catégories de frais (Jan → Déc) ──────────────────────────────────
-    final motsCle_repas = ['cafe', 'chocolat', 'the', 'tisane', 'sandwich', 'croissant', 'pizza', 'jus', 'eau',
+    final motscleRepas = ['cafe', 'chocolat', 'the', 'tisane', 'sandwich', 'croissant', 'pizza', 'jus', 'eau',
         'boisson', 'pain', 'baguette', 'menu', 'repas', 'dejeuner', 'diner',
         'restaurant', 'snack', 'burger', 'kebab', 'salade'];
-    final motsCle_carbu = ['essence', 'carburant', 'gasoil', 'diesel', 'plein', 'sp95', 'sp98'];
+    final motscleCarbu = ['essence', 'carburant', 'gasoil', 'diesel', 'plein', 'sp95', 'sp98'];
 
     double totalRepas = 0, totalCarbu = 0, totalMateriel = 0;
     // Par mois : {mois: {repas, carbu, materiel}}
@@ -135,10 +137,10 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
         final nom = a.intitule.toLowerCase()
             .replaceAll('é','e').replaceAll('è','e').replaceAll('à','a').replaceAll('ç','c');
         final mois = g.date.month;
-        if (motsCle_repas.any((k) => nom.contains(k))) {
+        if (motscleRepas.any((k) => nom.contains(k))) {
           totalRepas += a.montant;
           fraisParMois[mois]!['repas'] = (fraisParMois[mois]!['repas']! + a.montant);
-        } else if (motsCle_carbu.any((k) => nom.contains(k))) {
+        } else if (motscleCarbu.any((k) => nom.contains(k))) {
           totalCarbu += a.montant;
           fraisParMois[mois]!['carbu'] = (fraisParMois[mois]!['carbu']! + a.montant);
         } else {
@@ -252,11 +254,11 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
                           color: widget.impotSource > 0
-                              ? AppTheme.red.withOpacity(0.1)
+                              ? AppTheme.red.withValues(alpha: 0.1)
                               : AppTheme.bgCard,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: widget.impotSource > 0
-                              ? AppTheme.red.withOpacity(0.3)
+                              ? AppTheme.red.withValues(alpha: 0.3)
                               : AppTheme.bgCardBorder),
                         ),
                         child: Text(
@@ -299,7 +301,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
               Container(
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: AppTheme.cardDecoration(
-                    borderColor: AppTheme.blueAccent.withOpacity(0.3)),
+                    borderColor: AppTheme.blueAccent.withValues(alpha: 0.3)),
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: Column(children: [
@@ -314,9 +316,9 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         decoration: BoxDecoration(
-                          color: AppTheme.blueAccent.withOpacity(0.1),
+                          color: AppTheme.blueAccent.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppTheme.blueAccent.withOpacity(0.3)),
+                          border: Border.all(color: AppTheme.blueAccent.withValues(alpha: 0.3)),
                         ),
                         child: Text(
                           '${totalKmAnnee.toStringAsFixed(0)} km',
@@ -345,7 +347,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: AppTheme.cardDecoration(
-                    borderColor: const Color(0xFF7F77DD).withOpacity(0.3)),
+                    borderColor: const Color(0xFF7F77DD).withValues(alpha: 0.3)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
 
                   // ── En-tête ──────────────────────────────────────
@@ -353,7 +355,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFCECBF6).withOpacity(0.3),
+                      color: const Color(0xFFCECBF6).withValues(alpha: 0.3),
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                     ),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -446,7 +448,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _isPro
                               ? const Color(0xFF534AB7)
-                              : AppTheme.blueAccent.withOpacity(0.5),
+                              : AppTheme.blueAccent.withValues(alpha: 0.5),
                         ),
                         icon: _exportEnCours
                             ? const SizedBox(width: 16, height: 16,
@@ -466,9 +468,9 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppTheme.amber.withOpacity(0.08),
+                  color: AppTheme.amber.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.amber.withOpacity(0.2)),
+                  border: Border.all(color: AppTheme.amber.withValues(alpha: 0.2)),
                 ),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Icon(Icons.info_outline, size: 14, color: AppTheme.colorAmber),
@@ -528,9 +530,9 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
   Widget _fraisBadge(String label, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.1),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: color.withOpacity(0.3)),
+      border: Border.all(color: color.withValues(alpha: 0.3)),
     ),
     child: Text(label, style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w500)),
   );

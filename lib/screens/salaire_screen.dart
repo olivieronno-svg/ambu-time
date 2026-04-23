@@ -77,17 +77,17 @@ class SalaireScreen extends StatelessWidget {
     double totalPrimesMensuelles = primes.fold(0.0, (s, p) => s + p.montant);
     double primeAnnuelleApplicable = estMai ? primeAnnuelle : 0;
     // CP pour le header (calculé avant la section détail)
-    int _joursCP_header = 0;
+    int jourscpHeader = 0;
     for (final g in gardes.where((gg) => gg.isCongesPaies)) {
       final debut = g.date; final fin = g.cpDateFin ?? g.date;
       for (int i = 0; i <= fin.difference(debut).inDays; i++) {
         final jour = debut.add(Duration(days: i));
-        if (jour.year == now.year && jour.month == now.month) _joursCP_header++;
+        if (jour.year == now.year && jour.month == now.month) jourscpHeader++;
       }
     }
-    final double _tauxJourHeader = brutPeriodeRef > 0 ? brutPeriodeRef / 26 : ((152 * tauxHoraire) + (17 * tauxHoraire * 1.25)) / 26;
-    final double _cpHeader = _joursCP_header * _tauxJourHeader;
-    double brutAvecPrimesMois = brutMois + totalPrimesMensuelles + primeAnnuelleApplicable + _cpHeader;
+    final double tauxJourHeader = brutPeriodeRef > 0 ? brutPeriodeRef / 26 : ((152 * tauxHoraire) + (17 * tauxHoraire * 1.25)) / 26;
+    final double cpHeader = jourscpHeader * tauxJourHeader;
+    double brutAvecPrimesMois = brutMois + totalPrimesMensuelles + primeAnnuelleApplicable + cpHeader;
     double netBrutMois = Calculs.netEstime(brutAvecPrimesMois);
     double montantImpotMois = impotSource > 0 ? netBrutMois * (impotSource / 100) : 0;
     double netFinalMois = netBrutMois - montantImpotMois;
@@ -114,7 +114,7 @@ class SalaireScreen extends StatelessWidget {
     double brutAvecPrimes = brut + totalPrimesMensuelles + primeAnnuelleApplicable;
 
     // ── CP du mois en cours — avec gestion CP chevauchant 2 mois ──
-    int joursCP_mois = 0;
+    int jourscpMois = 0;
     for (final g in gardes.where((gg) => gg.isCongesPaies)) {
       final debut = g.date;
       final fin = g.cpDateFin ?? g.date;
@@ -122,7 +122,7 @@ class SalaireScreen extends StatelessWidget {
       for (int i = 0; i <= fin.difference(debut).inDays; i++) {
         final jour = debut.add(Duration(days: i));
         if (jour.year == now.year && jour.month == now.month) {
-          joursCP_mois++;
+          jourscpMois++;
         }
       }
     }
@@ -138,8 +138,8 @@ class SalaireScreen extends StatelessWidget {
       final salaireBaseMensuel = (152 * tauxHoraire) + (17 * tauxHoraire * 1.25);
       tauxJournalierCP = salaireBaseMensuel / 26;
     }
-    final indemniteCp = joursCP_mois * tauxJournalierCP;
-    final int totalJoursCP = joursCP_mois;
+    final indemniteCp = jourscpMois * tauxJournalierCP;
+    final int totalJoursCP = jourscpMois;
     final String labelModeCp = 'CCN ÷ 26 jours';
 
     // CP ajouté au brut avant calcul net
@@ -166,7 +166,7 @@ class SalaireScreen extends StatelessWidget {
                     majSuppMois: majSuppMois, totalIdaj: totalIdaj,
                     totalPaniers: totalPaniers, totalIndDim: totalIndDim,
                     totalLongueDistance: totalLongueDistance,
-                    indemniteCpMois: 0, joursCP_mois: joursCP_mois,
+                    indemniteCpMois: 0, joursCpMois: jourscpMois,
                     indemniteCp: indemniteCp, totalJoursCP: totalJoursCP,
                     labelModeCp: labelModeCp, primes: primes,
                     primeAnnuelle: primeAnnuelle, estMai: estMai,
@@ -176,9 +176,9 @@ class SalaireScreen extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                     decoration: BoxDecoration(
-                      color: AppTheme.colorGreen.withOpacity(0.15),
+                      color: AppTheme.colorGreen.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.colorGreen.withOpacity(0.4)),
+                      border: Border.all(color: AppTheme.colorGreen.withValues(alpha: 0.4)),
                     ),
                     child: Row(children: [
                       Icon(Icons.picture_as_pdf_outlined, size: 14, color: AppTheme.colorGreen),
@@ -218,7 +218,7 @@ class SalaireScreen extends StatelessWidget {
                       style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w700, color: Colors.white, height: 1)),
                   const SizedBox(height: 4),
                   Text('Salaire brut estimé',
-                      style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.7))),
+                      style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.7))),
                   const SizedBox(height: 14),
                   // Pilules
                   Row(children: [
@@ -231,14 +231,14 @@ class SalaireScreen extends StatelessWidget {
                   if (estMai && primeAnnuelle > 0) ...[
                     const SizedBox(height: 10),
                     Text('⭐ Prime annuelle incluse : +${primeAnnuelle.toStringAsFixed(0)} €',
-                        style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.6))),
+                        style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.6))),
                   ],
                   const SizedBox(height: 10),
                   Text(
                     gardesMoisCours.isEmpty
                         ? 'Aucune garde ce mois-ci'
                         : '${gardesMoisCours.where((g) => !g.jourNonTravaille).length} garde(s) · ${impotSource > 0 ? "${impotSource.toStringAsFixed(1)}% prélevé à la source" : "Pas de prélèvement"}',
-                    style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.45)),
+                    style: TextStyle(fontSize: 10, color: Colors.white.withValues(alpha: 0.45)),
                   ),
                 ]),
               ),
@@ -327,14 +327,14 @@ class SalaireScreen extends StatelessWidget {
 
                 return Container(
                   decoration: AppTheme.cardDecoration(
-                      borderColor: const Color(0xFF9FE1CB).withOpacity(0.5)),
+                      borderColor: const Color(0xFF9FE1CB).withValues(alpha: 0.5)),
                   child: Column(children: [
                     // En-tête période
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF9FE1CB).withOpacity(0.2),
+                        color: const Color(0xFF9FE1CB).withValues(alpha: 0.2),
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                       ),
                       child: Row(
@@ -346,7 +346,7 @@ class SalaireScreen extends StatelessWidget {
                             Text(
                               '1 juin ${debutRef.year} → 31 mai ${finRef.year}',
                               style: const TextStyle(fontSize: 12,
-                                  fontWeight: FontWeight.w600, color: const Color(0xFF1D9E75)),
+                                  fontWeight: FontWeight.w600, color: Color(0xFF1D9E75)),
                             ),
                           ]),
                           Text('2,5 j/mois',
@@ -364,7 +364,7 @@ class SalaireScreen extends StatelessWidget {
                               fontSize: 12, color: AppTheme.textSecondary)),
                           Text('${joursAcquis.toStringAsFixed(1)} / 30 jours',
                               style: const TextStyle(fontSize: 12,
-                                  fontWeight: FontWeight.w600, color: const Color(0xFF1D9E75))),
+                                  fontWeight: FontWeight.w600, color: Color(0xFF1D9E75))),
                         ]),
                         const SizedBox(height: 6),
                         ClipRRect(
@@ -372,7 +372,7 @@ class SalaireScreen extends StatelessWidget {
                           child: LinearProgressIndicator(
                             value: progression,
                             minHeight: 8,
-                            backgroundColor: const Color(0xFF9FE1CB).withOpacity(0.2),
+                            backgroundColor: const Color(0xFF9FE1CB).withValues(alpha: 0.2),
                             valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF1D9E75)),
                           ),
                         ),
@@ -385,7 +385,7 @@ class SalaireScreen extends StatelessWidget {
                       child: Row(children: [
                         Expanded(child: _metricCP(
                             'Jours acquis',
-                            '${joursAcquis.toStringAsFixed(1)}',
+                            joursAcquis.toStringAsFixed(1),
                             'sur 30 max',
                             const Color(0xFF1D9E75))),
                         const SizedBox(width: 8),
@@ -397,7 +397,7 @@ class SalaireScreen extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(child: _metricCP(
                             'Disponibles',
-                            '${joursDisponibles.toStringAsFixed(1)}',
+                            joursDisponibles.toStringAsFixed(1),
                             'jours restants',
                             joursDisponibles > 0 ? const Color(0xFF1D9E75) : AppTheme.colorRed)),
                       ]),
@@ -412,9 +412,9 @@ class SalaireScreen extends StatelessWidget {
                             padding: const EdgeInsets.all(10),
                             margin: const EdgeInsets.only(bottom: 6),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF9FE1CB).withOpacity(0.15),
+                              color: const Color(0xFF9FE1CB).withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFF1D9E75).withOpacity(0.3)),
+                              border: Border.all(color: const Color(0xFF1D9E75).withValues(alpha: 0.3)),
                             ),
                             child: Row(children: [
                               const Icon(Icons.add_circle_outline, size: 13,
@@ -422,7 +422,7 @@ class SalaireScreen extends StatelessWidget {
                               const SizedBox(width: 6),
                               Expanded(child: Text(
                                 '${joursDepuisAppli.toStringAsFixed(1)} j. (appli) + ${congesAcquisAvant.toStringAsFixed(1)} j. (avant) = ${joursAcquis.toStringAsFixed(1)} j. total',
-                                style: const TextStyle(fontSize: 10, color: const Color(0xFF1D9E75)),
+                                style: const TextStyle(fontSize: 10, color: Color(0xFF1D9E75)),
                               )),
                             ]),
                           ),
@@ -430,9 +430,9 @@ class SalaireScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: AppTheme.amber.withOpacity(0.08),
+                            color: AppTheme.amber.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.amber.withOpacity(0.2)),
+                            border: Border.all(color: AppTheme.amber.withValues(alpha: 0.2)),
                           ),
                           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Icon(Icons.info_outline, size: 13, color: AppTheme.colorAmber),
@@ -454,7 +454,7 @@ class SalaireScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 Container(
                   decoration: AppTheme.cardDecoration(
-                      borderColor: AppTheme.colorGreen.withOpacity(0.3)),
+                      borderColor: AppTheme.colorGreen.withValues(alpha: 0.3)),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
@@ -503,9 +503,9 @@ class SalaireScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
@@ -538,7 +538,7 @@ class SalaireScreen extends StatelessWidget {
     required double totalIndDim,
     required double totalLongueDistance,
     required double indemniteCpMois,
-    required int joursCP_mois,
+    required int joursCpMois,
     required double indemniteCp,
     required int totalJoursCP,
     required String labelModeCp,
@@ -552,7 +552,7 @@ class SalaireScreen extends StatelessWidget {
     final pdf = pw.Document();
     final moisNom = _nomMois(now.month);
 
-    pw.Widget _ligne(String label, String detail, String val, {bool bold = false, PdfColor? color}) =>
+    pw.Widget ligne(String label, String detail, String val, {bool bold = false, PdfColor? color}) =>
       pw.Padding(
         padding: const pw.EdgeInsets.symmetric(vertical: 4),
         child: pw.Row(children: [
@@ -619,24 +619,24 @@ class SalaireScreen extends StatelessWidget {
         // Détail
         pw.Text('DÉTAIL DU CALCUL', style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600)),
         pw.Divider(),
-        _ligne('Heures de base', '${Calculs.formatHeures(totalHeures)} travaillées', '${baseHeures.toStringAsFixed(2)} €'),
-        _ligne('Majorations nuit', totalMajNuit > 0 ? '+25%' : 'Aucune', '+${totalMajNuit.toStringAsFixed(2)} €'),
-        _ligne('Maj. dim./fériés', totalMajDim > 0 ? '+25%' : 'Aucune', '+${totalMajDim.toStringAsFixed(2)} €'),
-        _ligne('Heures supp.', majSuppMois > 0 ? 'CCN > 78h' : 'Seuil non atteint', '+${majSuppMois.toStringAsFixed(2)} €'),
-        _ligne('IDAJ', totalIdaj > 0 ? '> 12h amplitude' : 'Aucune', '+${totalIdaj.toStringAsFixed(2)} €'),
-        _ligne('Ind. forfait dim./férié', '', '+${totalIndDim.toStringAsFixed(2)} €'),
-        _ligne('Paniers repas', '', '+${totalPaniers.toStringAsFixed(2)} €'),
-        if (totalLongueDistance > 0) _ligne('Prime longue distance', '', '+${totalLongueDistance.toStringAsFixed(2)} €'),
-        if (joursCP_mois > 0) _ligne('CP ce mois ($joursCP_mois j.)', 'CCN ÷ 26 jours', '+${indemniteCp.toStringAsFixed(2)} €', color: PdfColor(0.059, 0.431, 0.337)),
-        if (totalJoursCP > 0) _ligne('Indemnité CP', '$totalJoursCP j. — $labelModeCp', '+${indemniteCp.toStringAsFixed(2)} €', color: PdfColor(0.059, 0.431, 0.337)),
-        for (final p in primes) _ligne(p.nom, 'prime mensuelle', '+${p.montant.toStringAsFixed(2)} €'),
-        if (estMai && primeAnnuelle > 0) _ligne('Prime annuelle', 'versée en mai', '+${primeAnnuelle.toStringAsFixed(2)} €'),
+        ligne('Heures de base', '${Calculs.formatHeures(totalHeures)} travaillées', '${baseHeures.toStringAsFixed(2)} €'),
+        ligne('Majorations nuit', totalMajNuit > 0 ? '+25%' : 'Aucune', '+${totalMajNuit.toStringAsFixed(2)} €'),
+        ligne('Maj. dim./fériés', totalMajDim > 0 ? '+25%' : 'Aucune', '+${totalMajDim.toStringAsFixed(2)} €'),
+        ligne('Heures supp.', majSuppMois > 0 ? 'CCN > 78h' : 'Seuil non atteint', '+${majSuppMois.toStringAsFixed(2)} €'),
+        ligne('IDAJ', totalIdaj > 0 ? '> 12h amplitude' : 'Aucune', '+${totalIdaj.toStringAsFixed(2)} €'),
+        ligne('Ind. forfait dim./férié', '', '+${totalIndDim.toStringAsFixed(2)} €'),
+        ligne('Paniers repas', '', '+${totalPaniers.toStringAsFixed(2)} €'),
+        if (totalLongueDistance > 0) ligne('Prime longue distance', '', '+${totalLongueDistance.toStringAsFixed(2)} €'),
+        if (joursCpMois > 0) ligne('CP ce mois ($joursCpMois j.)', 'CCN ÷ 26 jours', '+${indemniteCp.toStringAsFixed(2)} €', color: PdfColor(0.059, 0.431, 0.337)),
+        if (totalJoursCP > 0) ligne('Indemnité CP', '$totalJoursCP j. — $labelModeCp', '+${indemniteCp.toStringAsFixed(2)} €', color: PdfColor(0.059, 0.431, 0.337)),
+        for (final p in primes) ligne(p.nom, 'prime mensuelle', '+${p.montant.toStringAsFixed(2)} €'),
+        if (estMai && primeAnnuelle > 0) ligne('Prime annuelle', 'versée en mai', '+${primeAnnuelle.toStringAsFixed(2)} €'),
         pw.Divider(),
-        _ligne('Brut total', '', '${brutAvecPrimesMois.toStringAsFixed(2)} €', bold: true, color: PdfColor(0.094, 0.373, 0.647)),
-        _ligne('Net estimé (~78%)', '', '${netBrutMois.toStringAsFixed(2)} €', bold: true, color: PdfColor(0.059, 0.431, 0.337)),
+        ligne('Brut total', '', '${brutAvecPrimesMois.toStringAsFixed(2)} €', bold: true, color: PdfColor(0.094, 0.373, 0.647)),
+        ligne('Net estimé (~78%)', '', '${netBrutMois.toStringAsFixed(2)} €', bold: true, color: PdfColor(0.059, 0.431, 0.337)),
         if (impotSource > 0) ...[
-          _ligne('Impôt (${impotSource.toStringAsFixed(1)}%)', '', '- ${montantImpot.toStringAsFixed(2)} €', color: PdfColors.red),
-          _ligne('Net après impôt', '', '${netFinalMois.toStringAsFixed(2)} €', bold: true, color: PdfColor(0.114, 0.620, 0.459)),
+          ligne('Impôt (${impotSource.toStringAsFixed(1)}%)', '', '- ${montantImpot.toStringAsFixed(2)} €', color: PdfColors.red),
+          ligne('Net après impôt', '', '${netFinalMois.toStringAsFixed(2)} €', bold: true, color: PdfColor(0.114, 0.620, 0.459)),
         ],
 
         pw.Spacer(),
@@ -658,13 +658,13 @@ class SalaireScreen extends StatelessWidget {
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(children: [
         Text(val, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.white)),
         const SizedBox(height: 2),
-        Text(lbl, style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.55))),
+        Text(lbl, style: TextStyle(fontSize: 9, color: Colors.white.withValues(alpha: 0.55))),
       ]),
     ),
   );

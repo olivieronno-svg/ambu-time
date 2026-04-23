@@ -66,5 +66,20 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.944165086970-rdpc97eejfia2uide4t0p2n0he988uki</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>L'application a besoin du micro pour la saisie vocale des gardes.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>L'application utilise la reconnaissance vocale pour saisir les gardes à la voix.</string>
 </dict>
 </plist>

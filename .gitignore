@@ -47,3 +47,23 @@ app.*.map.json
 # Signing credentials — ne jamais committer
 android/key.properties
 *.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+
+# Build outputs
+android/build/
+android/app/build/
+**/build/
+
+# Claude Code / local tooling
+.claude/
+CLAUDE.md
+.lesshst
+
+# Fichiers de test temporaires
+lib/main_test_ok.dart
+
+# Upload certificates Google Play (public mais inutile en dépôt)
+upload_certificate.pem

@@ -22,7 +22,7 @@ workflows:
         script: |
           app-store-connect certificates create \
             --type IOS_DISTRIBUTION \
-            --certificate-key-path /tmp/cert_private_key.pem \
+            --certificate-key=@file:/tmp/cert_private_key.pem \
             --save
       - name: Ajouter les certificats a la keychain
         script: keychain add-certificates
@@ -30,7 +30,7 @@ workflows:
         script: |
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --certificate-key-path /tmp/cert_private_key.pem \
+            --certificate-key=@file:/tmp/cert_private_key.pem \
             --create \
             --save
       - name: Appliquer les profils au projet Xcode

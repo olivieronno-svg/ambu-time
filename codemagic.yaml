@@ -15,17 +15,13 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
+      - name: Set up code signing settings on Xcode project
+        script: xcode-project use-profiles
       - name: Get Flutter packages
         script: flutter pub get
       - name: Install pods
         script: |
           find . -name "Podfile" -execdir pod install \;
-      # NOTE: PAS de "Set up signing" manuel ici.
-      # Le bloc environment.ios_signing ci-dessus + l'integration
-      # app_store_connect: Codemagic suffisent a Codemagic pour :
-      # - Creer le certificat IOS_DISTRIBUTION si absent
-      # - Creer le provisioning profile si absent
-      # - Installer le tout dans la keychain avant build
       - name: Build ipa
         script: |
           flutter build ipa --release \

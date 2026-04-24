@@ -5,9 +5,6 @@ workflows:
     integrations:
       app_store_connect: Codemagic
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.onnoff.ambutime
       vars:
         BUNDLE_ID: "com.onnoff.ambutime"
         APP_STORE_APPLE_ID: 6763624759
@@ -15,16 +12,23 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: DEBUG - verify integration
+      - name: Initialiser la keychain
+        script: keychain initialize
+      - name: Creer le certificat de distribution iOS (si absent)
         script: |
-          echo "=== Liste des apps App Store Connect ==="
-          app-store-connect apps list || echo "ERREUR: integration App Store Connect"
-          echo "=== Profiles installes ==="
-          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ 2>&1 || echo "Aucun profile installe"
-          echo "=== Certificats dans la keychain ==="
-          security find-identity -v -p codesigning 2>&1 || true
-          echo "=== FIN DEBUG ==="
-      - name: Set up code signing settings on Xcode project
+          # Tente de creer le certificat — si deja existant, erreur ignoree
+          app-store-connect certificates create --type IOS_DISTRIBUTION --save 2>&1 || echo "OK - Certificat peut-etre deja existant"
+          # Liste et sauvegarde tous les certificats distribution en local
+          app-store-connect certificates list --type IOS_DISTRIBUTION --save
+      - name: Ajouter les certificats a la keychain
+        script: keychain add-certificates
+      - name: Creer/recuperer le provisioning profile
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --save
+      - name: Appliquer les profils au projet Xcode
         script: xcode-project use-profiles
       - name: Get Flutter packages
         script: flutter pub get

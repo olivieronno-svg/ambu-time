@@ -20,10 +20,22 @@ workflows:
       - name: Install pods
         script: |
           find . -name "Podfile" -execdir pod install \;
-      - name: Set up signing
+      - name: Set up signing (auto-create certs + profiles)
         script: |
           keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          # Récupère les signing files ; crée le certificat de distribution si absent
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --certificate-key-path /tmp/ios_cert.p12 || true
+          # Si aucun certificat distribution n'existe, en crée un nouveau
+          app-store-connect certificates create \
+            --type IOS_DISTRIBUTION \
+            --save || true
+          # Retente la récupération des signing files (profils)
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
           keychain add-certificates
           xcode-project use-profiles
       - name: Build ipa

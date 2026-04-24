@@ -14,6 +14,18 @@ workflows:
     scripts:
       - name: Initialiser la keychain
         script: keychain initialize
+      - name: Supprimer les anciens certificats de distribution (limite Apple = 2)
+        script: |
+          # Liste les certificats IOS_DISTRIBUTION en JSON et supprime-les tous
+          # pour permettre la creation d'un nouveau.
+          CERTS_JSON=$(app-store-connect certificates list --type IOS_DISTRIBUTION --json 2>/dev/null || echo "[]")
+          echo "Certificats existants :"
+          echo "$CERTS_JSON"
+          CERT_IDS=$(echo "$CERTS_JSON" | python3 -c "import sys,json; data=json.load(sys.stdin); print(' '.join([c['id'] for c in data]))")
+          for id in $CERT_IDS; do
+            echo "Suppression du certificat $id"
+            app-store-connect certificates delete "$id" --ignore-not-found
+          done
       - name: Generer la cle privee du certificat
         script: |
           # Genere une cle RSA 2048 bits qui servira de base au certificat

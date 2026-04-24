@@ -15,6 +15,15 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
+      - name: DEBUG - verify integration
+        script: |
+          echo "=== Liste des apps App Store Connect ==="
+          app-store-connect apps list || echo "ERREUR: integration App Store Connect"
+          echo "=== Profiles installes ==="
+          ls -la ~/Library/MobileDevice/Provisioning\ Profiles/ 2>&1 || echo "Aucun profile installe"
+          echo "=== Certificats dans la keychain ==="
+          security find-identity -v -p codesigning 2>&1 || true
+          echo "=== FIN DEBUG ==="
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
       - name: Get Flutter packages

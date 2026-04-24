@@ -83,5 +83,11 @@
 	<string>L'application utilise la reconnaissance vocale pour saisir les gardes à la voix.</string>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>Nous utilisons votre identifiant publicitaire pour afficher des annonces plus pertinentes et financer la version gratuite.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>L'application peut accéder à la photothèque uniquement si vous choisissez de partager un export PDF ou CSV par image.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>L'application peut enregistrer les exports dans la photothèque si vous le demandez explicitement.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>L'application ne nécessite pas l'appareil photo. Cette description est requise par des bibliothèques tierces.</string>
 </dict>
 </plist>

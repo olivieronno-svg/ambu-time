@@ -14,18 +14,23 @@ workflows:
     scripts:
       - name: Initialiser la keychain
         script: keychain initialize
-      - name: Creer le certificat de distribution iOS (si absent)
+      - name: Generer la cle privee du certificat
         script: |
-          # Tente de creer le certificat — si deja existant, erreur ignoree
-          app-store-connect certificates create --type IOS_DISTRIBUTION --save 2>&1 || echo "OK - Certificat peut-etre deja existant"
-          # Liste et sauvegarde tous les certificats distribution en local
-          app-store-connect certificates list --type IOS_DISTRIBUTION --save
+          # Genere une cle RSA 2048 bits qui servira de base au certificat
+          openssl genrsa -out /tmp/cert_private_key.pem 2048
+      - name: Creer le certificat de distribution iOS
+        script: |
+          app-store-connect certificates create \
+            --type IOS_DISTRIBUTION \
+            --certificate-key-path /tmp/cert_private_key.pem \
+            --save
       - name: Ajouter les certificats a la keychain
         script: keychain add-certificates
       - name: Creer/recuperer le provisioning profile
         script: |
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
+            --certificate-key-path /tmp/cert_private_key.pem \
             --create \
             --save
       - name: Appliquer les profils au projet Xcode

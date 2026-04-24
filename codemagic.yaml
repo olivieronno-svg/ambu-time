@@ -10,7 +10,7 @@ workflows:
         bundle_identifier: com.onnoff.ambutime
       vars:
         BUNDLE_ID: "com.onnoff.ambutime"
-        APP_STORE_APPLE_ID: 0000000000 # à remplacer par l'Apple ID numérique (cf App Store Connect)
+        APP_STORE_APPLE_ID: 6763624759
       flutter: stable
       xcode: latest
       cocoapods: default
@@ -38,8 +38,9 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        beta_groups:
-          - Testeurs internes
+        # beta_groups retiré pour le premier build — Codemagic uploadera sur
+        # TestFlight et l'app sera dispo pour les testeurs internes (App Manager).
+        # Ajouter un groupe ici plus tard une fois créé dans App Store Connect.
 
   android-workflow:
     name: Android Workflow

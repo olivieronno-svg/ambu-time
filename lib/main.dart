@@ -566,11 +566,15 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       GraphiquesScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
         indemnitesDimanche: _indemnitesDimanche, montantIdaj: _montantIdaj,
+        primes: _primes, primeAnnuelle: _primeAnnuelleCalculee,
+        brutPeriodeRef: _brutPeriodeRef,
       ),
       HistoriqueScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
         indemnitesDimanche: _indemnitesDimanche, montantIdaj: _montantIdaj,
         primes: _primes, impotSource: _impotSource,
+        primeAnnuelle: _primeAnnuelleCalculee,
+        brutPeriodeRef: _brutPeriodeRef,
         onModifierGarde: _ouvrirModification,
         onSupprimerGarde: _supprimerGarde,
       ),

@@ -170,4 +170,63 @@ class Calculs {
     final m = totalMinutes % 60;
     return '${h}h${m.toString().padLeft(2, '0')}';
   }
+
+  // ── CP : taux journalier unifié ──────────────────────────────────────────
+  // Si brutPeriodeRef saisi → méthode exacte (brut période / 26)
+  // Sinon → approximation CCN (152h + 17h majorées) / 26
+  static double tauxJournalierCP(double taux, double brutPeriodeRef) {
+    if (brutPeriodeRef > 0) return brutPeriodeRef / 26;
+    return ((152 * taux) + (17 * taux * 1.25)) / 26;
+  }
+
+  // ── Jours CP dans un mois calendaire donné (gère CP chevauchant 2 mois) ──
+  static int joursCPDansMois(List<Garde> gardes, int annee, int mois) {
+    int total = 0;
+    for (final g in gardes.where((gg) => gg.isCongesPaies)) {
+      final debut = g.date;
+      final fin = g.cpDateFin ?? g.date;
+      for (int i = 0; i <= fin.difference(debut).inDays; i++) {
+        final j = debut.add(Duration(days: i));
+        if (j.year == annee && j.month == mois) total++;
+      }
+    }
+    return total;
+  }
+
+  // ── Source de vérité unique : brut mensuel complet ───────────────────────
+  // Inclut : gardes travaillées + fériés seuls + primes mensuelles +
+  // prime annuelle (mai) + indemnité CP.
+  // Utilisé par AccueilScreen, HistoriqueScreen (vue année + détail mois) et
+  // SalaireScreen pour afficher le MÊME chiffre partout.
+  // HS CCN exclue du total brut (affichée séparément en info dans Salaire).
+  static double brutMoisComplet({
+    required List<Garde> toutesGardes,
+    required int annee,
+    required int mois,
+    required double taux,
+    required double panier,
+    required double indDimanche,
+    required double montantIdaj,
+    double brutPeriodeRef = 0,
+    double primesMensuellesMois = 0,
+    double primeAnnuelle = 0,
+  }) {
+    // 1. Gardes du mois (y.c. fériés seuls, via filtre interne de totalBrut)
+    final gardesMois = toutesGardes
+        .where((g) => g.date.year == annee && g.date.month == mois)
+        .toList();
+    final brutGardes = totalBrut(gardesMois,
+        taux: taux, panier: panier,
+        indDimanche: indDimanche, montantIdaj: montantIdaj);
+
+    // 2. Indemnité CP (jours CP de ce mois × taux journalier)
+    final nbCP = joursCPDansMois(toutesGardes, annee, mois);
+    final indemniteCP = nbCP * tauxJournalierCP(taux, brutPeriodeRef);
+
+    // 3. Primes
+    final estMai = mois == 5;
+    final primeAnnuelleApplicable = estMai ? primeAnnuelle : 0.0;
+
+    return brutGardes + indemniteCP + primesMensuellesMois + primeAnnuelleApplicable;
+  }
 }

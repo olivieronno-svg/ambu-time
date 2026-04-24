@@ -15,6 +15,8 @@ class HistoriqueScreen extends StatefulWidget {
   final double montantIdaj;
   final List<PrimeMensuelle> primes;
   final double impotSource;
+  final double primeAnnuelle;
+  final double brutPeriodeRef;
   final Function(Garde)? onModifierGarde;
   final Function(String)? onSupprimerGarde;
 
@@ -27,6 +29,8 @@ class HistoriqueScreen extends StatefulWidget {
     required this.montantIdaj,
     this.primes = const [],
     this.impotSource = 0,
+    this.primeAnnuelle = 0,
+    this.brutPeriodeRef = 0,
     this.onModifierGarde,
     this.onSupprimerGarde,
   });
@@ -319,27 +323,28 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
             child: Wrap(
               spacing: 8, runSpacing: 8,
               children: moisDansAnnee.map((cle) {
+                final anneeNum = int.parse(cle.split('-')[0]);
                 final moisNum = int.parse(cle.split('-')[1]);
                 final gm = parMois[cle]!;
-                final brutMois = Calculs.totalBrut(
-                    gm.where((g) => !g.isCongesPaies).toList(),
-                    taux: widget.tauxHoraire,
-                    panier: widget.panierRepas, indDimanche: widget.indemnitesDimanche,
-                    montantIdaj: widget.montantIdaj);
                 final hMois = Calculs.totalHeures(gm.where((g) => !g.isCongesPaies).toList());
-                // Compte les jours CP tombant dans CE mois uniquement
-                int nbCp = 0;
-                for (final g in gm.where((g) => g.isCongesPaies)) {
-                  final debut = g.date;
-                  final fin = g.cpDateFin ?? g.date;
-                  for (int di = 0; di <= fin.difference(debut).inDays; di++) {
-                    final j = debut.add(Duration(days: di));
-                    if (j.month == moisNum && j.year == int.parse(cle.split('-')[0])) nbCp++;
-                  }
-                }
-                final tauxJourCpEstim = ((152 * widget.tauxHoraire) + (17 * widget.tauxHoraire * 1.25)) / 26;
-                final cpEstim = nbCp * tauxJourCpEstim;
-                final brutTotal = brutMois + cpEstim;
+                final nbCp = Calculs.joursCPDansMois(widget.gardes, anneeNum, moisNum);
+                // Primes mensuelles applicables à ce mois précis
+                final primesMois = widget.primes
+                    .where((p) => p.appliqueAu(cle))
+                    .fold(0.0, (s, p) => s + p.montant);
+                // Source de vérité unique — même chiffre que SalaireScreen/Graphiques
+                final brutTotal = Calculs.brutMoisComplet(
+                  toutesGardes: widget.gardes,
+                  annee: anneeNum,
+                  mois: moisNum,
+                  taux: widget.tauxHoraire,
+                  panier: widget.panierRepas,
+                  indDimanche: widget.indemnitesDimanche,
+                  montantIdaj: widget.montantIdaj,
+                  brutPeriodeRef: widget.brutPeriodeRef,
+                  primesMensuellesMois: primesMois,
+                  primeAnnuelle: widget.primeAnnuelle,
+                );
                 return GestureDetector(
                   onTap: () => setState(() => _mois = cle),
                   child: Container(
@@ -430,23 +435,24 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     final moisNum = int.parse(partsM[1]);
     final anneeNum = int.parse(partsM[0]);
 
-    // Stats header
+    // Stats header — même brut que SalaireScreen/Graphiques pour cohérence
     final gardesTravaillees = gardes.where((g) => !g.isCongesPaies && !g.jourNonTravaille).toList().cast<Garde>();
     final totalH = Calculs.totalHeures(gardesTravaillees);
-    final brutGardes = Calculs.totalBrut(gardesTravaillees,
-        taux: widget.tauxHoraire, panier: widget.panierRepas,
-        indDimanche: widget.indemnitesDimanche, montantIdaj: widget.montantIdaj);
-    int joursCP = 0;
-    for (final g in gardes.where((g) => g.isCongesPaies)) {
-      final debut = g.date; final fin = g.cpDateFin ?? g.date;
-      for (int i = 0; i <= fin.difference(debut).inDays; i++) {
-        final j = debut.add(Duration(days: i));
-        if (j.month == moisNum && j.year == anneeNum) joursCP++;
-      }
-    }
-    final tauxJourCP = ((152 * widget.tauxHoraire) + (17 * widget.tauxHoraire * 1.25)) / 26;
-    final brutCP = joursCP * tauxJourCP;
-    final brutTotal = brutGardes + brutCP;
+    final primesMois = widget.primes
+        .where((p) => p.appliqueAu(_mois!))
+        .fold(0.0, (s, p) => s + p.montant);
+    final brutTotal = Calculs.brutMoisComplet(
+      toutesGardes: widget.gardes,
+      annee: anneeNum,
+      mois: moisNum,
+      taux: widget.tauxHoraire,
+      panier: widget.panierRepas,
+      indDimanche: widget.indemnitesDimanche,
+      montantIdaj: widget.montantIdaj,
+      brutPeriodeRef: widget.brutPeriodeRef,
+      primesMensuellesMois: primesMois,
+      primeAnnuelle: widget.primeAnnuelle,
+    );
     final netTotal = Calculs.netEstime(brutTotal);
     final nbDim = gardesTravaillees.where((g) => g.isDimancheOuFerie).length;
     final moisNoms = ['','jan','fév','mars','avr','mai','juin','juil','août','sep','oct','nov','déc'];

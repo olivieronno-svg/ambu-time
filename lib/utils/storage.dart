@@ -124,9 +124,10 @@ class Storage {
     };
   }
 
+  // ⚠️ Mode tester retiré depuis le passage à l'abonnement mensuel.
+  // Cette méthode ne fait plus rien — conservée pour compat binaire éventuelle.
   static Future<void> activerModeTester() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_testerProKey, true);
+    // no-op
   }
 
   // ── EXPORT / IMPORT JSON ─────────────────────────────────────────
@@ -225,9 +226,15 @@ class Storage {
     await prefs.remove('app_planning_v1');
   }
 
+  /// Mode tester retiré depuis l'abonnement mensuel.
+  /// Retourne toujours false ET nettoie l'ancien flag sur les téléphones
+  /// des anciens testeurs (révocation automatique au prochain lancement).
   static Future<bool> isTesterPro() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_testerProKey) ?? false;
+    if (prefs.containsKey(_testerProKey)) {
+      await prefs.remove(_testerProKey);
+    }
+    return false;
   }
 
   static Future<void> sauvegarderTheme(bool isDark) async {

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/garde.dart';
+import '../models/prime.dart';
 import '../utils/calculs.dart';
 import '../app_theme.dart';
 
@@ -11,6 +12,9 @@ class GraphiquesScreen extends StatefulWidget {
   final double panierRepas;
   final double indemnitesDimanche;
   final double montantIdaj;
+  final List<PrimeMensuelle> primes;
+  final double primeAnnuelle;
+  final double brutPeriodeRef;
 
   const GraphiquesScreen({
     super.key,
@@ -19,6 +23,9 @@ class GraphiquesScreen extends StatefulWidget {
     required this.panierRepas,
     required this.indemnitesDimanche,
     required this.montantIdaj,
+    this.primes = const [],
+    this.primeAnnuelle = 0,
+    this.brutPeriodeRef = 0,
   });
 
   @override
@@ -51,8 +58,6 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
     }
 
     final taux = widget.tauxHoraire;
-    // Taux journalier CP selon CCN (approximation sans brut période de référence)
-    final tauxJournalierCP = ((152 * taux) + (17 * taux * 1.25)) / 26;
 
     final cles = parMois.keys.toList()..sort();
     return cles.map((cle) {
@@ -61,24 +66,28 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
       final annee = int.parse(parts[0]);
       final gardesMois = parMois[cle]!;
 
-      final brut = Calculs.totalBrut(gardesMois,
-          taux: taux, panier: widget.panierRepas,
-          indDimanche: widget.indemnitesDimanche, montantIdaj: widget.montantIdaj);
       final heures = Calculs.totalHeures(gardesMois);
       final supp = Calculs.heuresSupp(gardesMois);
       final nbGardes = gardesMois.where((g) => !g.jourNonTravaille).length;
 
-      // Indemnité CP : compte les jours CP tombant dans ce mois
-      int joursCP = 0;
-      for (var g in cpGardes) {
-        final fin = g.cpDateFin ?? g.date;
-        for (int i = 0; i <= fin.difference(g.date).inDays; i++) {
-          final jour = g.date.add(Duration(days: i));
-          if (jour.year == annee && jour.month == mois) joursCP++;
-        }
-      }
-      final indemniteCp = joursCP * tauxJournalierCP;
-      final brutTotal = brut + indemniteCp;
+      // Primes mensuelles applicables à ce mois précis
+      final primesMois = widget.primes
+          .where((p) => p.appliqueAu(cle))
+          .fold(0.0, (s, p) => s + p.montant);
+
+      // Source de vérité unique — même chiffre que Salaire/Historique
+      final brutTotal = Calculs.brutMoisComplet(
+        toutesGardes: widget.gardes,
+        annee: annee,
+        mois: mois,
+        taux: taux,
+        panier: widget.panierRepas,
+        indDimanche: widget.indemnitesDimanche,
+        montantIdaj: widget.montantIdaj,
+        brutPeriodeRef: widget.brutPeriodeRef,
+        primesMensuellesMois: primesMois,
+        primeAnnuelle: widget.primeAnnuelle,
+      );
 
       return _MoisData(
         cle: cle, mois: mois, annee: annee,

@@ -71,87 +71,53 @@ class SalaireScreen extends StatelessWidget {
         g.date.year == now.year && g.date.month == now.month).toList();
 
     double totalHeuresMois = Calculs.totalHeures(gardesMoisCours);
-    double brutMois = Calculs.totalBrut(gardesMoisCours,
-        taux: tauxHoraire, panier: panierRepas,
-        indDimanche: indemnitesDimanche, montantIdaj: montantIdaj);
     // Filtre les primes qui s'appliquent au mois en cours (selon leur champ mois).
     final moisCourant = '${now.year}-${now.month.toString().padLeft(2, '0')}';
     double totalPrimesMensuelles = primes
         .where((p) => p.appliqueAu(moisCourant))
         .fold(0.0, (s, p) => s + p.montant);
-    double primeAnnuelleApplicable = estMai ? primeAnnuelle : 0;
-    // CP pour le header (calculé avant la section détail)
-    int jourscpHeader = 0;
-    for (final g in gardes.where((gg) => gg.isCongesPaies)) {
-      final debut = g.date; final fin = g.cpDateFin ?? g.date;
-      for (int i = 0; i <= fin.difference(debut).inDays; i++) {
-        final jour = debut.add(Duration(days: i));
-        if (jour.year == now.year && jour.month == now.month) jourscpHeader++;
-      }
-    }
-    final double tauxJourHeader = brutPeriodeRef > 0 ? brutPeriodeRef / 26 : ((152 * tauxHoraire) + (17 * tauxHoraire * 1.25)) / 26;
-    final double cpHeader = jourscpHeader * tauxJourHeader;
-    double brutAvecPrimesMois = brutMois + totalPrimesMensuelles + primeAnnuelleApplicable + cpHeader;
+    // ── Source de vérité unique : brut mensuel complet ────────────────
+    // Même chiffre que Historique et Graphiques.
+    final int jourscpMois = Calculs.joursCPDansMois(gardes, now.year, now.month);
+    final double tauxJournalierCP = Calculs.tauxJournalierCP(tauxHoraire, brutPeriodeRef);
+    final double indemniteCp = jourscpMois * tauxJournalierCP;
+    final double brutAvecPrimesMois = Calculs.brutMoisComplet(
+      toutesGardes: gardes,
+      annee: now.year,
+      mois: now.month,
+      taux: tauxHoraire,
+      panier: panierRepas,
+      indDimanche: indemnitesDimanche,
+      montantIdaj: montantIdaj,
+      brutPeriodeRef: brutPeriodeRef,
+      primesMensuellesMois: totalPrimesMensuelles,
+      primeAnnuelle: primeAnnuelle,
+    );
     double netBrutMois = Calculs.netEstime(brutAvecPrimesMois);
     double montantImpotMois = impotSource > 0 ? netBrutMois * (impotSource / 100) : 0;
     double netFinalMois = netBrutMois - montantImpotMois;
 
-    // ── Gardes du mois pour le détail du calcul ──────────────────────
-    final gardesMois = gardesMoisCours; // alias clair
-    double totalHeures = Calculs.totalHeures(gardesMois);
-    double brut = Calculs.totalBrut(gardesMois,
-        taux: tauxHoraire, panier: panierRepas,
-        indDimanche: indemnitesDimanche, montantIdaj: montantIdaj);
-    // ── HS par quatorzaine CCN — rattachées au mois en cours ──────────
+    // ── Détail du calcul (pour la section sous la carte principale) ───
+    final gardesMois = gardesMoisCours;
+    double totalHeures = totalHeuresMois;
+    // HS par quatorzaine CCN — info uniquement, non ajoutée au brut total
     final hsSuppParMois = Calculs.heuresSuppParMois(gardes, debutQuatorzaine);
     final moisCle = '${now.year}-${now.month.toString().padLeft(2,'0')}';
     final hsSuppMois = hsSuppParMois[moisCle] ?? 0;
     final majSuppMois = Calculs.majorationHSSurMontant(hsSuppMois, tauxHoraire);
     double totalMajNuit = gardesMois.fold(0.0, (s, g) => s + Calculs.majorationNuit(g, tauxHoraire));
     double totalMajDim = gardesMois.fold(0.0, (s, g) => s + Calculs.majorationDimanche(g, tauxHoraire));
-    // IDAJ = majoration en % du taux horaire (75% tranche 12h-13h + 100% au-delà).
-    // On passe donc tauxHoraire, PAS montantIdaj (qui était un montant fixe legacy).
     double totalIdaj = gardesMois.fold(0.0, (s, g) => s + Calculs.idaj(g, tauxHoraire));
     int nbDimanche = gardesMois.where((g) => g.isDimancheOuFerie).length;
     double totalPaniers = gardesMois.fold(0.0, (s, g) => s + g.panierRepasGarde);
     double totalLongueDistance = gardesMois.fold(0.0, (s, g) => s + g.primeLongueDistance);
     double totalIndDim = nbDimanche * indemnitesDimanche;
     double baseHeures = totalHeures * tauxHoraire;
-    double brutAvecPrimes = brut + totalPrimesMensuelles + primeAnnuelleApplicable;
 
-    // ── CP du mois en cours — avec gestion CP chevauchant 2 mois ──
-    int jourscpMois = 0;
-    for (final g in gardes.where((gg) => gg.isCongesPaies)) {
-      final debut = g.date;
-      final fin = g.cpDateFin ?? g.date;
-      // Calculer les jours qui tombent dans le mois courant
-      for (int i = 0; i <= fin.difference(debut).inDays; i++) {
-        final jour = debut.add(Duration(days: i));
-        if (jour.year == now.year && jour.month == now.month) {
-          jourscpMois++;
-        }
-      }
-    }
-    // ── Indemnité CP CCN — taux journalier exact ÷ 26 ──────────────
-    // Si brut période de référence saisi → calcul exact comme l'employeur
-    // Sinon → approximation CCN : (152h × taux + 17h × taux × 1.25) ÷ 26
-    final double tauxJournalierCP;
-    if (brutPeriodeRef > 0) {
-      // Méthode exacte : brut période de référence ÷ 26 jours ouvrés
-      tauxJournalierCP = brutPeriodeRef / 26;
-    } else {
-      // Approximation CCN
-      final salaireBaseMensuel = (152 * tauxHoraire) + (17 * tauxHoraire * 1.25);
-      tauxJournalierCP = salaireBaseMensuel / 26;
-    }
-    final indemniteCp = jourscpMois * tauxJournalierCP;
     final int totalJoursCP = jourscpMois;
     final String labelModeCp = 'CCN ÷ 26 jours';
 
-    // CP ajouté au brut avant calcul net
-    brutAvecPrimes += indemniteCp;
-    double netBrut = Calculs.netEstime(brutAvecPrimes);
-    double montantImpot = impotSource > 0 ? netBrut * (impotSource / 100) : 0;
+    double montantImpot = montantImpotMois;
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
       body: SafeArea(

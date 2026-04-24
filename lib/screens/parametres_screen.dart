@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:url_launcher/url_launcher.dart';
 import '../utils/auth_service.dart';
 import '../utils/cloud_sync_service.dart';
 import '../utils/excel_service.dart';
@@ -107,7 +108,15 @@ class _ParametresScreenState extends State<ParametresScreen> {
   Future<void> _verifierPro() async {
     final pro = await PurchaseService.isPro();
     final tester = await Storage.isTesterPro();
+    if (!mounted) return;
     setState(() => _isPro = pro || tester);
+  }
+
+  Future<void> _ouvrirLienExterne(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   /// Suppression du compte Firebase + données cloud + données locales.
@@ -444,7 +453,11 @@ class _ParametresScreenState extends State<ParametresScreen> {
           ]),
         ),
       ),
-    );
+    ).whenComplete(() {
+      // Libère les TextEditingController à la fermeture du modal
+      nomCtrl.dispose();
+      montantCtrl.dispose();
+    });
   }
 
   @override
@@ -655,10 +668,40 @@ class _ParametresScreenState extends State<ParametresScreen> {
                       }
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.colorAmber),
-                    child: const Text('Passer à la version Pro — 2,99 €',
+                    child: const Text('Passer à la version Pro — 2,99 €/mois',
                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   )),
+                  // ── Conditions d'abonnement (obligatoire Apple + Google) ──
+                  const SizedBox(height: 10),
+                  Text(
+                    'Abonnement mensuel de 2,99 €. Renouvelé automatiquement '
+                    'sauf résiliation 24h avant la fin de la période. '
+                    'Gérable depuis votre compte Google Play ou App Store.',
+                    style: TextStyle(fontSize: 10, color: AppTheme.textSecondary,
+                        height: 1.35),
+                  ),
                   const SizedBox(height: 8),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    GestureDetector(
+                      onTap: () => _ouvrirLienExterne(
+                          'https://olivieronno-svg.github.io/ambu-time/privacy.html'),
+                      child: Text('Politique de confidentialité',
+                          style: TextStyle(fontSize: 10,
+                              color: AppTheme.colorBlue,
+                              decoration: TextDecoration.underline)),
+                    ),
+                    Text(' · ', style: TextStyle(fontSize: 10,
+                        color: AppTheme.textTertiary)),
+                    GestureDetector(
+                      onTap: () => _ouvrirLienExterne(
+                          'https://olivieronno-svg.github.io/ambu-time/delete-account.html'),
+                      child: Text('Conditions',
+                          style: TextStyle(fontSize: 10,
+                              color: AppTheme.colorBlue,
+                              decoration: TextDecoration.underline)),
+                    ),
+                  ]),
+                  const SizedBox(height: 10),
                   GestureDetector(
                     onTap: () async {
                       final messenger = ScaffoldMessenger.of(context);

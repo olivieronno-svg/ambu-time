@@ -244,7 +244,14 @@ class _AccueilScreenState extends State<AccueilScreen> {
           ),
         ),
       ),
-    );
+    ).whenComplete(() {
+      // Libère les TextEditingController à la fermeture du modal
+      collegueCtrl.dispose();
+      dhHCtrl.dispose();
+      dhMCtrl.dispose();
+      dfHCtrl.dispose();
+      dfMCtrl.dispose();
+    });
   }
 
   void _supprimerGardePlanning(PlannedGarde g) {

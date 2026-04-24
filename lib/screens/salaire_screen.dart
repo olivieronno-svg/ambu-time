@@ -109,7 +109,9 @@ class SalaireScreen extends StatelessWidget {
     final majSuppMois = Calculs.majorationHSSurMontant(hsSuppMois, tauxHoraire);
     double totalMajNuit = gardesMois.fold(0.0, (s, g) => s + Calculs.majorationNuit(g, tauxHoraire));
     double totalMajDim = gardesMois.fold(0.0, (s, g) => s + Calculs.majorationDimanche(g, tauxHoraire));
-    double totalIdaj = gardesMois.fold(0.0, (s, g) => s + Calculs.idaj(g, montantIdaj));
+    // IDAJ = majoration en % du taux horaire (75% tranche 12h-13h + 100% au-delà).
+    // On passe donc tauxHoraire, PAS montantIdaj (qui était un montant fixe legacy).
+    double totalIdaj = gardesMois.fold(0.0, (s, g) => s + Calculs.idaj(g, tauxHoraire));
     int nbDimanche = gardesMois.where((g) => g.isDimancheOuFerie).length;
     double totalPaniers = gardesMois.fold(0.0, (s, g) => s + g.panierRepasGarde);
     double totalLongueDistance = gardesMois.fold(0.0, (s, g) => s + g.primeLongueDistance);

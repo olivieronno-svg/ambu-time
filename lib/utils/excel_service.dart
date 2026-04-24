@@ -101,19 +101,17 @@ class ExcelService {
       }
     }
 
-    // Sauvegarde et partage
+    // Sauvegarde et partage — on NE supprime PAS le fichier après,
+    // car WhatsApp/Drive lisent souvent le fichier APRÈS que le share sheet
+    // se soit fermé. Le répertoire temporaire est nettoyé par l'OS.
     final dir = await getTemporaryDirectory();
     final nomFichier = 'AmbuTime_${_nomMois(mois)}_$annee.csv';
     final file = File('${dir.path}/$nomFichier');
-    try {
-      // BOM UTF-8 pour que Excel Windows affiche les accents
-      await file.writeAsString(buf.toString());
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'text/csv')],
-        text: 'Ambu Time — Export ${_nomMois(mois)} $annee',
-      );
-    } finally {
-      if (await file.exists()) await file.delete();
-    }
+    // BOM UTF-8 pour que Excel Windows affiche les accents
+    await file.writeAsString(buf.toString());
+    await Share.shareXFiles(
+      [XFile(file.path, mimeType: 'text/csv')],
+      text: 'Ambu Time — Export ${_nomMois(mois)} $annee',
+    );
   }
 }

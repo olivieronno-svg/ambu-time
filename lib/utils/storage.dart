@@ -157,8 +157,11 @@ class Storage {
     final nomFichier = 'ambutime_${now.day}-${now.month}-${now.year}.json';
     final file = File('${dir.path}/$nomFichier');
     await file.writeAsString(json);
-    await Share.shareXFiles([XFile(file.path)],
-        text: 'Sauvegarde Ambu Time — $nomFichier');
+    await Share.shareXFiles(
+      [XFile(file.path, mimeType: 'application/json')],
+      text: 'Sauvegarde Ambu Time — $nomFichier',
+      subject: 'Sauvegarde Ambu Time',
+    );
   }
 
   static Future<String> importerDonnees(String jsonContent) async {

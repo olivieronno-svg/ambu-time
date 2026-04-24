@@ -2481,7 +2481,11 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           )),
         ]),
       ),
-    );
+    ).whenComplete(() {
+      // Libère les TextEditingController à la fermeture du modal
+      intCtrl.dispose();
+      montantCtrl.dispose();
+    });
   }
 
   Widget _champHeure(String label, TextEditingController heureCtrl,

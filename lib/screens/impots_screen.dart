@@ -46,6 +46,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
   Future<void> _verifierPro() async {
     final pro = await PurchaseService.isPro();
     final tester = await Storage.isTesterPro();
+    if (!mounted) return;
     setState(() => _isPro = pro || tester);
   }
 

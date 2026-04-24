@@ -31,8 +31,7 @@ workflows:
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --certificate-key=@file:/tmp/cert_private_key.pem \
-            --create \
-            --save
+            --create
       - name: Appliquer les profils au projet Xcode
         script: xcode-project use-profiles
       - name: Get Flutter packages

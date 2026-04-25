@@ -659,12 +659,31 @@ class _ParametresScreenState extends State<ParametresScreen> {
                   SizedBox(width: double.infinity, child: ElevatedButton(
                     onPressed: () async {
                       final messenger = ScaffoldMessenger.of(context);
-                      final ok = await PurchaseService.acheterPro();
+                      final result = await PurchaseService.acheterPro();
                       if (!mounted) return;
-                      if (ok) {
-                        setState(() => _isPro = true);
-                        messenger.showSnackBar(
-                            const SnackBar(content: Text('Version Pro activée !')));
+                      switch (result) {
+                        case AchatResult.succes:
+                          setState(() => _isPro = true);
+                          messenger.showSnackBar(const SnackBar(
+                              content: Text('Version Pro activée !')));
+                          break;
+                        case AchatResult.annule:
+                          messenger.showSnackBar(const SnackBar(
+                              content: Text('Achat annulé.')));
+                          break;
+                        case AchatResult.offerIndisponible:
+                          messenger.showSnackBar(const SnackBar(
+                              duration: Duration(seconds: 6),
+                              content: Text(
+                                  'Abonnement temporairement indisponible. '
+                                  'Vérifiez votre connexion et réessayez dans quelques minutes.')));
+                          break;
+                        case AchatResult.echec:
+                          messenger.showSnackBar(const SnackBar(
+                              duration: Duration(seconds: 6),
+                              content: Text(
+                                  "Erreur lors de l'achat. Veuillez réessayer ou contacter le support.")));
+                          break;
                       }
                     },
                     style: ElevatedButton.styleFrom(backgroundColor: AppTheme.colorAmber),

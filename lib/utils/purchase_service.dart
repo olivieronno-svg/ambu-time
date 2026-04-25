@@ -1,7 +1,10 @@
 
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:purchases_flutter/purchases_flutter.dart';
+
+enum AchatResult { succes, annule, offerIndisponible, echec }
 
 class PurchaseService {
   static const String _androidKey = String.fromEnvironment(
@@ -34,15 +37,27 @@ class PurchaseService {
     }
   }
 
-  static Future<bool> acheterPro() async {
+  static Future<AchatResult> acheterPro() async {
     try {
       final offerings = await Purchases.getOfferings();
-      if (offerings.current == null) return false;
+      if (offerings.current == null ||
+          offerings.current!.availablePackages.isEmpty) {
+        return AchatResult.offerIndisponible;
+      }
       final package = offerings.current!.availablePackages.first;
-      await Purchases.purchase(PurchaseParams.package(package));
-      return true;
+      final info = await Purchases.purchase(PurchaseParams.package(package));
+      if (info.entitlements.active.containsKey(entitlementId)) {
+        return AchatResult.succes;
+      }
+      return AchatResult.echec;
+    } on PlatformException catch (e) {
+      final code = PurchasesErrorHelper.getErrorCode(e);
+      if (code == PurchasesErrorCode.purchaseCancelledError) {
+        return AchatResult.annule;
+      }
+      return AchatResult.echec;
     } catch (e) {
-      return false;
+      return AchatResult.echec;
     }
   }
 

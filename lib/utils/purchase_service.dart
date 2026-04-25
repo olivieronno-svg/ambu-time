@@ -45,8 +45,8 @@ class PurchaseService {
         return AchatResult.offerIndisponible;
       }
       final package = offerings.current!.availablePackages.first;
-      final info = await Purchases.purchase(PurchaseParams.package(package));
-      if (info.entitlements.active.containsKey(entitlementId)) {
+      final result = await Purchases.purchase(PurchaseParams.package(package));
+      if (result.customerInfo.entitlements.active.containsKey(entitlementId)) {
         return AchatResult.succes;
       }
       return AchatResult.echec;

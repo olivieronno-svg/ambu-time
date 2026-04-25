@@ -1,12 +1,18 @@
 
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
 class PurchaseService {
-  static const String apiKey = String.fromEnvironment(
+  static const String _androidKey = String.fromEnvironment(
     'REVENUECAT_KEY',
     defaultValue: 'goog_SJzfxsgcrYbioGEVeeZzgDqsxAd',
   );
+  static const String _iosKey = String.fromEnvironment(
+    'REVENUECAT_KEY_IOS',
+    defaultValue: 'appl_BwaBwYHXStdiYaVTkccvRjjFfCx',
+  );
+  static String get apiKey => Platform.isIOS ? _iosKey : _androidKey;
   static const String entitlementId = 'Onn-Off Pro';
 
   static Future<void> initialiser() async {

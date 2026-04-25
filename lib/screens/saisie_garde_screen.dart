@@ -216,8 +216,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           _traiterReponse(rep);
         }
       },
-      listenFor: const Duration(seconds: 45),
-      pauseFor: const Duration(seconds: 5),
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 2),
       listenOptions: SpeechListenOptions(
         partialResults: true,
         cancelOnError: false,
@@ -289,10 +289,10 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       if (_checkCPChevauchement()) return;
       final ok = _enregistrerGarde();
       if (!ok) {
-        await _parler('Erreur, impossible d enregistrer : heure de debut et de fin identiques.');
+        await _parler('Erreur, impossible d\'enregistrer : heure de début et de fin identiques.');
         return;
       }
-      await _parler('Parfait, garde enregistree !');
+      await _parler('Parfait, garde enregistrée !');
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) _reinitialiserFormulaire();
       });
@@ -326,6 +326,16 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         final h = int.tryParse(m.group(1) ?? '') ?? -1;
         final mn = int.tryParse(m.group(2) ?? '0') ?? 0;
         if (h >= 0 && h <= 23) hCorr.add([h, mn]);
+      }
+      // Split "8h18" en "8h" + "18h" si iOS a collé les deux heures
+      if (hCorr.length == 1 &&
+          hCorr[0][1] >= 1 && hCorr[0][1] <= 23 &&
+          !tCorr.contains('minute') && !tCorr.contains(' min')) {
+        final h1 = hCorr[0][0];
+        final h2 = hCorr[0][1];
+        hCorr.clear();
+        hCorr.add([h1, 0]);
+        hCorr.add([h2, 0]);
       }
 
       // Détecte si la phrase contient une date explicite
@@ -385,8 +395,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           await _parler('Erreur, la date est incorrecte. On ne peut pas enregistrer une date future.');
           return;
         }
-        final moisN = ['','janvier','fevrier','mars','avril','mai','juin',
-            'juillet','aout','septembre','octobre','novembre','decembre'];
+        final moisN = ['','janvier','février','mars','avril','mai','juin',
+            'juillet','août','septembre','octobre','novembre','décembre'];
         final jour = _date.day == 1 ? 'premier' : '${_date.day}';
         final mois = moisN[_date.month];
         _etatConv = 'heures';
@@ -451,7 +461,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           'confirmer': 'Dois-je sauvegarder cette garde ?',
         };
         final suite = questions[_etatConv] ?? '';
-        await _parler(suite.isNotEmpty ? 'Vehicule $veh. $suite' : 'Vehicule $veh.');
+        await _parler(suite.isNotEmpty ? 'Véhicule $veh. $suite' : 'Véhicule $veh.');
         return;
       }
     }
@@ -472,7 +482,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           'confirmer': 'Dois-je sauvegarder cette garde ?',
         };
         final suite = questions[_etatConv] ?? '';
-        await _parler(suite.isNotEmpty ? 'Colleague $col note. $suite' : 'Colleague $col note.');
+        await _parler(suite.isNotEmpty ? 'Collègue $col noté. $suite' : 'Collègue $col noté.');
         return;
       }
     }
@@ -496,9 +506,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         };
         final suite = questions[_etatConv] ?? '';
         if (suite.isNotEmpty) {
-          await _parler('Coupure de $pauseStr notee. $suite');
+          await _parler('Coupure de $pauseStr notée. $suite');
         } else {
-          await _parler('Coupure de $pauseStr notee.');
+          await _parler('Coupure de $pauseStr notée.');
         }
         return;
       }
@@ -528,7 +538,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             widget.onSupprimerGardeId!(id);
           }
           _reinitialiserFormulaire();
-          await _parler('Conges supprimes. Quelle garde dois-je inscrire ?');
+          await _parler('Congés supprimés. Quelle garde dois-je inscrire ?');
         } else {
           setState(() {
             _isCongesPaies = false;
@@ -604,8 +614,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                'aout','septembre','octobre','novembre','decembre'].any((m) => tDate.contains(m));
           if (dateDejaPresente) {
             setState(() => _date = dateDebutCP);
-            final mN = ['','janvier','fevrier','mars','avril','mai','juin',
-                'juillet','aout','septembre','octobre','novembre','decembre'];
+            final mN = ['','janvier','février','mars','avril','mai','juin',
+                'juillet','août','septembre','octobre','novembre','décembre'];
             final j = dateDebutCP.day == 1 ? 'premier' : '${dateDebutCP.day}';
             final mo = mN[dateDebutCP.month];
             // Détecte durée dans la phrase ("pendant 6 jours", "6 jours")
@@ -665,8 +675,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             _pendingDateJour = datePartielle.day;
             _pendingDateMois = datePartielle.month;
             _pendingHeuresDate = hPending;
-            final moisN = ['','janvier','fevrier','mars','avril','mai','juin',
-                'juillet','aout','septembre','octobre','novembre','decembre'];
+            final moisN = ['','janvier','février','mars','avril','mai','juin',
+                'juillet','août','septembre','octobre','novembre','décembre'];
             final jourStr = datePartielle.day == 1 ? 'premier' : '${datePartielle.day}';
             _etatConv = 'date_annee';
             await _parler('Pour le $jourStr ${moisN[datePartielle.month]}, de quelle année ?');
@@ -705,6 +715,16 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           final mn = int.tryParse(mh.group(2) ?? '0') ?? 0;
           if (h >= 0 && h <= 23) heuresDate.add([h, mn]);
         }
+        // Split "8h18" en "8h" + "18h" si iOS a collé les deux heures
+        if (heuresDate.length == 1 &&
+            heuresDate[0][1] >= 1 && heuresDate[0][1] <= 23 &&
+            !tHD.contains('minute') && !tHD.contains(' min')) {
+          final h1 = heuresDate[0][0];
+          final h2 = heuresDate[0][1];
+          heuresDate.clear();
+          heuresDate.add([h1, 0]);
+          heuresDate.add([h2, 0]);
+        }
         if (heuresDate.length < 2) {
           // Fallback: cherche tous les nombres 0-23 dans le texte
           final nums = RegExp(r'\b(\d{1,2})\b').allMatches(tHD)
@@ -721,8 +741,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             if (autre >= 0) heuresDate.add([autre, 0]);
           }
         }
-        final moisN = ['','janvier','fevrier','mars','avril','mai','juin',
-            'juillet','aout','septembre','octobre','novembre','decembre'];
+        final moisN = ['','janvier','février','mars','avril','mai','juin',
+            'juillet','août','septembre','octobre','novembre','décembre'];
         final jour = _date.day == 1 ? 'premier' : '${_date.day}';
         final mois = moisN[_date.month];
         final conf = 'Très bien, pour le $jour $mois.';
@@ -777,8 +797,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         _pendingDateMois = null;
         _pendingHeuresDate = null;
         setState(() => _date = dateCible);
-        final moisNA = ['','janvier','fevrier','mars','avril','mai','juin',
-            'juillet','aout','septembre','octobre','novembre','decembre'];
+        final moisNA = ['','janvier','février','mars','avril','mai','juin',
+            'juillet','août','septembre','octobre','novembre','décembre'];
         final jourStr = jP == 1 ? 'premier' : '$jP';
         final confA = 'Très bien, pour le $jourStr ${moisNA[moP]} $anneeTrouvee.';
         if (hP.length >= 2) {
@@ -808,6 +828,18 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           final h = int.tryParse(m.group(1) ?? '') ?? -1;
           final mn = int.tryParse(m.group(2) ?? '0') ?? 0;
           if (h >= 0 && h <= 23) heures.add([h, mn]);
+        }
+        // iOS speech-to-text colle "8h 18h" en "8h18" → on récupère 1 seule heure
+        // avec minutes 1..23 qui peuvent être une 2e heure. On split si pas de
+        // mention explicite de "minute(s)".
+        if (heures.length == 1 &&
+            heures[0][1] >= 1 && heures[0][1] <= 23 &&
+            !tH.contains('minute') && !tH.contains(' min')) {
+          final h1 = heures[0][0];
+          final h2 = heures[0][1];
+          heures.clear();
+          heures.add([h1, 0]);
+          heures.add([h2, 0]);
         }
         // Si moins de 2 heures trouvées, cherche 2 nombres distincts
         if (heures.length < 2) {
@@ -925,14 +957,42 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           } else {
             final mots = ['cafe','chocolat','the','tisane','sandwich','croissant',
                 'boisson','pizza','jus','eau','repas','essence','carburant','gasoil',
-                'red bull','redbull','monster','orangina','fanta','coca','coca cola','coca-cola','pepsi','limonade','schweppes'];
+                'red bull','redbull','monster','orangina','fanta','coca','coca cola','coca-cola','pepsi','limonade','schweppes',
+                'soda','biere','bieres','vin','vins',
+                'frites','hamburger','burger','cheeseburger','kebab','tacos','salade','sushi','sushis',
+                'baguette','pain','croque','croque monsieur','panini',
+                'glace','yaourt','chips','bonbon','bonbons','fruit','pomme','banane',
+                'gaufre','crepe','crepes','gateau','pain au chocolat','tarte','quiche',
+                'expresso','espresso','americano','cappuccino','latte',
+                'ice tea','iced tea','the glace',
+                'vittel','evian','badoit','perrier','cristaline',
+                'donut','donuts','bagel','wrap',
+                'mcdo','kfc','subway','starbucks',
+                'kinder','mars','snickers','twix','kitkat','bounty','nutella',
+                'bouteille','canette','cannette',
+                'omelette','spaghetti','pates','riz'];
             final nom = mots.firstWhere((m) => t.contains(m), orElse: () => '');
             if (nom.isNotEmpty) {
               _articleEnAttente = nom;
               _etatConv = 'prix_achat';
               await _parler('Quel est le prix de $nom ?');
             } else {
-              await _parler('Je n\'ai pas reconnu cet achat. Pouvez-vous préciser ? Dites par exemple : un café à un euro cinquante, ou bien : rien.');
+              // Fallback : input court (1-3 mots) non listé → on l'utilise comme nom
+              // d'article. Évite la boucle "je n'ai pas compris" pour des mots comme
+              // "soda" non explicitement listés.
+              final motsRep = rep.trim().split(RegExp(r'\s+'))
+                  .where((m) => m.length >= 2).toList();
+              final estCommandeNeg = t.contains('rien') || t.contains('aucun') ||
+                  t.contains('non') || t.contains('compris') ||
+                  t.contains('repet') || t.contains('répét');
+              if (motsRep.isNotEmpty && motsRep.length <= 3 &&
+                  rep.length <= 30 && !estCommandeNeg) {
+                _articleEnAttente = rep.trim().toLowerCase();
+                _etatConv = 'prix_achat';
+                await _parler('Quel est le prix de $_articleEnAttente ?');
+              } else {
+                await _parler('Je n\'ai pas reconnu cet achat. Pouvez-vous préciser ? Dites par exemple : un café à un euro cinquante, ou bien : rien.');
+              }
             }
           }
         }
@@ -1038,8 +1098,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             return;
           }
           setState(() => _date = dateD);
-          final moisNCD = ['','janvier','fevrier','mars','avril','mai','juin',
-              'juillet','aout','septembre','octobre','novembre','decembre'];
+          final moisNCD = ['','janvier','février','mars','avril','mai','juin',
+              'juillet','août','septembre','octobre','novembre','décembre'];
           final jourDebutD = dateD.day == 1 ? 'premier' : dateD.day.toString();
           final moisDebutD = moisNCD[dateD.month];
           if (_isCongesPaies) {
@@ -1047,7 +1107,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             await _parler('Du $jourDebutD $moisDebutD. Quel est le dernier jour des congés ?');
           } else {
             _etatConv = 'confirmer';
-            await _parler('Jour non travaille le $jourDebutD $moisDebutD. Dois-je sauvegarder ?');
+            await _parler('Jour non travaillé le $jourDebutD $moisDebutD. Dois-je sauvegarder ?');
           }
         }
         break;
@@ -1055,8 +1115,8 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       case 'conge_fin':
         {
         final dateDebutSaved = _date;
-        final moisNC2 = ['','janvier','fevrier','mars','avril','mai','juin',
-            'juillet','aout','septembre','octobre','novembre','decembre'];
+        final moisNC2 = ['','janvier','février','mars','avril','mai','juin',
+            'juillet','août','septembre','octobre','novembre','décembre'];
         final jourD2 = dateDebutSaved.day == 1 ? 'premier' : '${dateDebutSaved.day}';
         final moisD2 = moisNC2[dateDebutSaved.month];
         // Détecte "pendant X jours" ou "X jours"
@@ -1083,9 +1143,9 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         final moisF = moisNC2[dateFin.month];
         _etatConv = 'confirmer';
         if (nbJoursTotal != null) {
-          await _parler('Conges payes du $jourD2 $moisD2 pendant $nbJoursTotal jours, jusqu au $jourF $moisF. Dois-je sauvegarder ?');
+          await _parler('Congés payés du $jourD2 $moisD2 pendant $nbJoursTotal jours, jusqu\'au $jourF $moisF. Dois-je sauvegarder ?');
         } else {
-          await _parler('Conges payes du $jourD2 $moisD2 au $jourF $moisF. Dois-je sauvegarder ?');
+          await _parler('Congés payés du $jourD2 $moisD2 au $jourF $moisF. Dois-je sauvegarder ?');
         }
         }
         break;
@@ -1103,7 +1163,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             }
           }
           _etatConv = 'heures';
-          await _parler('Conges annules. Quels sont les horaires ?');
+          await _parler('Congés annulés. Quels sont les horaires ?');
         } else if (t.contains('changer') || t.contains('modifier') || t.contains('non') ||
                    t.contains('autre') || t.contains('date')) {
           _etatConv = 'date';
@@ -1129,10 +1189,10 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
             }).firstOrNull;
             if (gardeExistante != null) {
               _etatConv = 'confirmer_doublon';
-              final mN = ['','janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];
+              final mN = ['','janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
               final jW = _date.day == 1 ? 'premier' : '${_date.day}';
               final moW = mN[_date.month];
-              await _parler('Attention, il y a deja une garde le $jW $moW. Voulez-vous quand meme enregistrer ?');
+              await _parler('Attention, il y a déjà une garde le $jW $moW. Voulez-vous quand même enregistrer ?');
               break;
             }
           }
@@ -1178,7 +1238,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           }
           final okConf = _enregistrerGarde();
           if (!okConf) {
-            await _parler('Erreur, impossible d enregistrer : heure de debut et de fin identiques.');
+            await _parler('Erreur, impossible d\'enregistrer : heure de début et de fin identiques.');
             return;
           }
           await _parler(_isCongesPaies ? 'Congés payés enregistrés !' : 'Parfait, garde enregistrée !');
@@ -1198,7 +1258,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
           setState(() => _etatConv = '');
           final okDbl = _enregistrerGarde();
           if (!okDbl) {
-            await _parler('Erreur, impossible d enregistrer : heure de debut et de fin identiques.');
+            await _parler('Erreur, impossible d\'enregistrer : heure de début et de fin identiques.');
             return;
           }
           await _parler('Garde enregistrée !');

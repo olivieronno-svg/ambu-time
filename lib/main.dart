@@ -121,6 +121,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   double _congesAcquisAvant = 0;
   int _modeCp = 0;
   double _brutPeriodeRef = 0;
+  bool _primeAnnuelleActivee = true;
   DateTime? _debutQuatorzaine;
   bool _chargement = true;
   bool _isPro = false;
@@ -243,6 +244,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         _congesAcquisAvant = (params['congesAcquisAvant'] as num?)?.toDouble() ?? 0.0;
         _modeCp = params['modeCp'] as int? ?? 0;
         _brutPeriodeRef = (params['brutPeriodeRef'] as num?)?.toDouble() ?? 0.0;
+        _primeAnnuelleActivee = params['primeAnnuelleActivee'] as bool? ?? true;
         _chargement = false;
       });
 
@@ -526,6 +528,27 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     return result;
   }
 
+  /// Valeur effective de la prime annuelle :
+  /// - 0 si l'utilisateur l'a désactivée
+  /// - sinon la moyenne mensuelle calculée
+  double get _primeAnnuelleEffective =>
+      _primeAnnuelleActivee ? _primeAnnuelleCalculee : 0.0;
+
+  Future<void> _togglePrimeAnnuelle(bool activee) async {
+    setState(() => _primeAnnuelleActivee = activee);
+    // Persiste tous les paramètres avec la nouvelle valeur
+    await Storage.sauvegarderParametres(
+      taux: _tauxHoraire, panier: _panierRepas,
+      dimanche: _indemnitesDimanche, idaj: _montantIdaj,
+      debutQuatorzaine: _debutQuatorzaine, primes: _primes,
+      impotSource: _impotSource, kmDomicileTravail: _kmDomicileTravail,
+      poste: _poste, congesAcquisAvant: _congesAcquisAvant, modeCp: _modeCp,
+      brutPeriodeRef: _brutPeriodeRef,
+      primeAnnuelleActivee: _primeAnnuelleActivee,
+    );
+    _syncToCloud();
+  }
+
   double get _primeAnnuelleCalculee {
     if (_gardes.isEmpty) return 0;
     final Map<String, double> brutParMois = {};
@@ -567,22 +590,25 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       SalaireScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
         indemnitesDimanche: _indemnitesDimanche, montantIdaj: _montantIdaj,
-        primes: _primes, primeAnnuelle: _primeAnnuelleCalculee,
+        primes: _primes, primeAnnuelle: _primeAnnuelleEffective,
         impotSource: _impotSource, congesAcquisAvant: _congesAcquisAvant,
         modeCp: _modeCp, debutQuatorzaine: _debutQuatorzaine,
         brutPeriodeRef: _brutPeriodeRef,
+        primeAnnuelleActivee: _primeAnnuelleActivee,
+        primeAnnuelleAuto: _primeAnnuelleCalculee,
+        onPrimeAnnuelleToggle: _togglePrimeAnnuelle,
       ),
       GraphiquesScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
         indemnitesDimanche: _indemnitesDimanche, montantIdaj: _montantIdaj,
-        primes: _primes, primeAnnuelle: _primeAnnuelleCalculee,
+        primes: _primes, primeAnnuelle: _primeAnnuelleEffective,
         brutPeriodeRef: _brutPeriodeRef,
       ),
       HistoriqueScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
         indemnitesDimanche: _indemnitesDimanche, montantIdaj: _montantIdaj,
         primes: _primes, impotSource: _impotSource,
-        primeAnnuelle: _primeAnnuelleCalculee,
+        primeAnnuelle: _primeAnnuelleEffective,
         brutPeriodeRef: _brutPeriodeRef,
         onModifierGarde: _ouvrirModification,
         onSupprimerGarde: _supprimerGarde,
@@ -593,7 +619,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         debutQuatorzaine: _debutQuatorzaine, onParametresModifies: _modifierParametres,
         gardes: _gardes, montantIdajParam: _montantIdaj,
         primes: _primes, impotSource: _impotSource,
-        primeAnnuelleCalculee: _primeAnnuelleCalculee,
+        primeAnnuelleCalculee: _primeAnnuelleEffective,
         kmDomicileTravail: _kmDomicileTravail, poste: _poste,
         congesAcquisAvant: _congesAcquisAvant, modeCp: _modeCp,
         brutPeriodeRef: _brutPeriodeRef,
@@ -603,7 +629,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
         indemnitesDimanche: _indemnitesDimanche, montantIdaj: _montantIdaj,
         impotSource: _impotSource, primes: _primes,
-        primeAnnuelle: _primeAnnuelleCalculee,
+        primeAnnuelle: _primeAnnuelleEffective,
         kmDomicileTravail: _kmDomicileTravail,
       ),
       const InfoScreen(),

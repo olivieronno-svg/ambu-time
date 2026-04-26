@@ -20,6 +20,13 @@ class SalaireScreen extends StatelessWidget {
   final int modeCp;
   final double brutPeriodeRef;
   final DateTime? debutQuatorzaine;
+  /// Vrai si l'utilisateur veut inclure la prime annuelle (case cochée).
+  final bool primeAnnuelleActivee;
+  /// Montant auto-calculé (moyenne mensuelle), affiché à titre indicatif
+  /// même quand la case est décochée.
+  final double primeAnnuelleAuto;
+  /// Callback pour basculer l'inclusion de la prime annuelle.
+  final ValueChanged<bool>? onPrimeAnnuelleToggle;
 
   const SalaireScreen({
     super.key,
@@ -35,6 +42,9 @@ class SalaireScreen extends StatelessWidget {
     this.modeCp = 0,
     this.brutPeriodeRef = 0,
     this.debutQuatorzaine,
+    this.primeAnnuelleActivee = true,
+    this.primeAnnuelleAuto = 0,
+    this.onPrimeAnnuelleToggle,
   });
 
   List<Map<String, dynamic>> _evolutionMensuelle() {
@@ -254,6 +264,33 @@ class SalaireScreen extends StatelessWidget {
                   ],
                 )),
               ]),
+              const SizedBox(height: 8),
+              // ── Toggle prime annuelle ────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: AppTheme.cardDecoration(),
+                child: Row(children: [
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Prime annuelle',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary)),
+                      Text(
+                        primeAnnuelleActivee
+                            ? 'Versée en mai · ${primeAnnuelleAuto.toStringAsFixed(0)} €'
+                            : 'Désactivée · auto ${primeAnnuelleAuto.toStringAsFixed(0)} €',
+                        style: TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  )),
+                  Switch(
+                    value: primeAnnuelleActivee,
+                    onChanged: onPrimeAnnuelleToggle,
+                    activeThumbColor: Colors.amber,
+                  ),
+                ]),
+              ),
               const SizedBox(height: 8),
               _encartResume(
                 titre: 'PRÉLÈVEMENTS',

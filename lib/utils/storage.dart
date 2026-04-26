@@ -24,6 +24,7 @@ class Storage {
   static const _congesAcquisKey = 'conges_acquis_avant';
   static const _modeCpKey = 'mode_calcul_cp';
   static const _brutPeriodeRefKey = 'brut_periode_ref';
+  static const _primeAnnuelleActiveeKey = 'prime_annuelle_activee';
 
   static Future<void> sauvegarderGardes(List<Garde> gardes) async {
     final prefs = await SharedPreferences.getInstance();
@@ -50,6 +51,7 @@ class Storage {
     double congesAcquisAvant = 0,
     int modeCp = 0, // 0=auto, 1=dixième, 2=maintien
     double brutPeriodeRef = 0,
+    bool primeAnnuelleActivee = true,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_tauxKey, taux);
@@ -62,6 +64,7 @@ class Storage {
     await prefs.setDouble(_congesAcquisKey, congesAcquisAvant);
     await prefs.setInt(_modeCpKey, modeCp);
     await prefs.setDouble(_brutPeriodeRefKey, brutPeriodeRef);
+    await prefs.setBool(_primeAnnuelleActiveeKey, primeAnnuelleActivee);
     await prefs.setStringList(
         _primesKey, primes.map((p) => jsonEncode(p.toMap())).toList());
     if (debutQuatorzaine != null) {
@@ -107,6 +110,7 @@ class Storage {
       'congesAcquisAvant': prefs.getDouble(_congesAcquisKey) ?? 0.0,
       'modeCp': prefs.getInt(_modeCpKey) ?? 0,
       'brutPeriodeRef': prefs.getDouble(_brutPeriodeRefKey) ?? 0.0,
+      'primeAnnuelleActivee': prefs.getBool(_primeAnnuelleActiveeKey) ?? true,
     };
   }
 
@@ -150,6 +154,7 @@ class Storage {
         'congesAcquisAvant': params['congesAcquisAvant'],
         'modeCp': params['modeCp'],
         'brutPeriodeRef': params['brutPeriodeRef'],
+        'primeAnnuelleActivee': params['primeAnnuelleActivee'],
       },
     };
     final json = const JsonEncoder.withIndent('  ').convert(data);
@@ -190,6 +195,7 @@ class Storage {
       if (p['congesAcquisAvant'] != null) await prefs.setDouble(_congesAcquisKey, (p['congesAcquisAvant'] as num).toDouble());
       if (p['modeCp'] != null) await prefs.setInt(_modeCpKey, p['modeCp'] as int);
       if (p['brutPeriodeRef'] != null) await prefs.setDouble(_brutPeriodeRefKey, (p['brutPeriodeRef'] as num).toDouble());
+      if (p['primeAnnuelleActivee'] != null) await prefs.setBool(_primeAnnuelleActiveeKey, p['primeAnnuelleActivee'] as bool);
       if (p['debutQuatorzaine'] != null) await prefs.setString(_quatorzaineKey, p['debutQuatorzaine'] as String);
       if (p['primes'] != null) {
         final primesRaw = p['primes'] as List<dynamic>;
@@ -220,6 +226,7 @@ class Storage {
     await prefs.remove(_congesAcquisKey);
     await prefs.remove(_modeCpKey);
     await prefs.remove(_brutPeriodeRefKey);
+    await prefs.remove(_primeAnnuelleActiveeKey);
     await prefs.remove(_rappelCollegueKey);
     await prefs.remove(_rappelDistanceKey);
     await prefs.remove(_testerProKey);

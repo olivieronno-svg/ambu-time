@@ -295,7 +295,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
 
   Future<void> _importerDonnees() async {
     // Sélection du fichier (JSON, PDF, Excel, Word, etc.)
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json', 'txt'],
       dialogTitle: 'Choisir le fichier de sauvegarde',

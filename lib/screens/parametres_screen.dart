@@ -35,6 +35,8 @@ class ParametresScreen extends StatefulWidget {
   final Function(double, double, double, double, DateTime?,
       List<PrimeMensuelle>, double, double, String, double, int, double) onParametresModifies;
   final Future<void> Function()? onSignInSuccess;
+  final bool isPro;
+  final Future<void> Function()? onPurchaseSuccess;
 
   const ParametresScreen({
     super.key,
@@ -55,6 +57,8 @@ class ParametresScreen extends StatefulWidget {
     required this.poste,
     this.debutQuatorzaine,
     this.onSignInSuccess,
+    this.isPro = false,
+    this.onPurchaseSuccess,
   });
 
   @override
@@ -74,7 +78,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
   late List<PrimeMensuelle> _primes;
   late String _poste;
   DateTime? _debutQuatorzaine;
-  bool _isPro = false;
 
   @override
   void initState() {
@@ -94,7 +97,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
     _primes = List.from(widget.primes);
     _poste = widget.poste;
     _debutQuatorzaine = widget.debutQuatorzaine;
-    _verifierPro();
   }
 
   @override
@@ -103,13 +105,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
     _idajCtrl.dispose(); _impotCtrl.dispose(); _kmCtrl.dispose(); _congesCtrl.dispose();
     _brutPeriodeRefCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _verifierPro() async {
-    final pro = await PurchaseService.isPro();
-    final tester = await Storage.isTesterPro();
-    if (!mounted) return;
-    setState(() => _isPro = pro || tester);
   }
 
   Future<void> _ouvrirLienExterne(String url) async {
@@ -639,18 +634,18 @@ class _ParametresScreenState extends State<ParametresScreen> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(14),
               decoration: AppTheme.cardDecoration(
-                borderColor: _isPro
+                borderColor: widget.isPro
                     ? AppTheme.colorGreen.withValues(alpha: 0.4)
                     : AppTheme.colorAmber.withValues(alpha: 0.4)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text(_isPro ? 'Version Pro activée ✓' : 'Version gratuite',
+                  Text(widget.isPro ? 'Version Pro activée ✓' : 'Version gratuite',
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
-                          color: _isPro ? AppTheme.colorGreen : AppTheme.textPrimary)),
-                  if (_isPro)
+                          color: widget.isPro ? AppTheme.colorGreen : AppTheme.textPrimary)),
+                  if (widget.isPro)
                     AppTheme.badge('PRO', AppTheme.colorGreen.withValues(alpha: 0.15), AppTheme.colorGreen),
                 ]),
-                if (!_isPro) ...[
+                if (!widget.isPro) ...[
                   const SizedBox(height: 8),
                   _featurePro('Export PDF illimité'),
                   _featurePro('Graphiques avancés'),
@@ -663,7 +658,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
                       if (!mounted) return;
                       switch (result) {
                         case AchatResult.succes:
-                          setState(() => _isPro = true);
+                          await widget.onPurchaseSuccess?.call();
                           messenger.showSnackBar(const SnackBar(
                               content: Text('Version Pro activée !')));
                           break;
@@ -728,7 +723,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
                       if (!mounted) return;
                       messenger.showSnackBar(SnackBar(
                           content: Text(ok ? 'Achats restaurés !' : 'Aucun achat trouvé')));
-                      if (ok) setState(() => _isPro = true);
+                      if (ok) await widget.onPurchaseSuccess?.call();
                     },
                     child: Center(child: Text('Restaurer mes achats',
                         style: TextStyle(fontSize: 12, color: AppTheme.colorBlue))),

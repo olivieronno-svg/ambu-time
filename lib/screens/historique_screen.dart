@@ -3,8 +3,6 @@ import '../models/garde.dart';
 import '../models/prime.dart';
 import '../utils/calculs.dart';
 import '../utils/pdf_service.dart';
-import '../utils/purchase_service.dart';
-import '../utils/storage.dart';
 import '../app_theme.dart';
 
 class HistoriqueScreen extends StatefulWidget {
@@ -19,6 +17,7 @@ class HistoriqueScreen extends StatefulWidget {
   final double brutPeriodeRef;
   final Function(Garde)? onModifierGarde;
   final Function(String)? onSupprimerGarde;
+  final bool isPro;
 
   const HistoriqueScreen({
     super.key,
@@ -33,6 +32,7 @@ class HistoriqueScreen extends StatefulWidget {
     this.brutPeriodeRef = 0,
     this.onModifierGarde,
     this.onSupprimerGarde,
+    this.isPro = false,
   });
 
   @override
@@ -42,7 +42,6 @@ class HistoriqueScreen extends StatefulWidget {
 class _HistoriqueScreenState extends State<HistoriqueScreen> {
   int? _annee;
   String? _mois;
-  bool _isPro = false;
   bool _exportEnCours = false;
 
   static const _moisNoms = [
@@ -53,16 +52,6 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     '', 'jan', 'fév', 'mar', 'avr', 'mai', 'jun',
     'jul', 'aoû', 'sep', 'oct', 'nov', 'déc'
   ];
-
-  @override
-  void initState() { super.initState(); _verifierPro(); }
-
-  Future<void> _verifierPro() async {
-    final pro = await PurchaseService.isPro();
-    final tester = await Storage.isTesterPro();
-    if (!mounted) return;
-    setState(() => _isPro = pro || tester);
-  }
 
   void _ouvrirModification(Garde g) {
     if (widget.onModifierGarde == null) return;
@@ -386,7 +375,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                 onTap: _exportEnCours ? null : () {
                   if (moisDansAnnee.isNotEmpty) {
                     final dernierMois = moisDansAnnee.last;
-                    if (_isPro) {
+                    if (widget.isPro) {
                       _exporterMois(int.parse(dernierMois.split('-')[0]),
                           int.parse(dernierMois.split('-')[1]));
                     } else {
@@ -398,22 +387,22 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _isPro
+                    color: widget.isPro
                         ? AppTheme.colorGreen.withValues(alpha: 0.15)
                         : AppTheme.blueAccent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: _isPro
+                    border: Border.all(color: widget.isPro
                         ? AppTheme.colorGreen.withValues(alpha: 0.4)
                         : AppTheme.blueAccent.withValues(alpha: 0.3)),
                   ),
                   child: Row(children: [
-                    Icon(_isPro ? Icons.picture_as_pdf : Icons.lock_outline,
+                    Icon(widget.isPro ? Icons.picture_as_pdf : Icons.lock_outline,
                         size: 14,
-                        color: _isPro ? AppTheme.colorGreen : AppTheme.blueAccent),
+                        color: widget.isPro ? AppTheme.colorGreen : AppTheme.blueAccent),
                     const SizedBox(width: 5),
                     Text('Export PDF', style: TextStyle(fontSize: 11,
                         fontWeight: FontWeight.w500,
-                        color: _isPro ? AppTheme.colorGreen : AppTheme.blueAccent)),
+                        color: widget.isPro ? AppTheme.colorGreen : AppTheme.blueAccent)),
                   ]),
                 ),
               ),

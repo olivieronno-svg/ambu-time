@@ -4,8 +4,6 @@ import '../models/garde.dart';
 import '../models/prime.dart';
 import '../utils/calculs.dart';
 import '../utils/pdf_service.dart';
-import '../utils/purchase_service.dart';
-import '../utils/storage.dart';
 import '../app_theme.dart';
 
 class ImpotsScreen extends StatefulWidget {
@@ -18,6 +16,7 @@ class ImpotsScreen extends StatefulWidget {
   final List<PrimeMensuelle> primes;
   final double primeAnnuelle;
   final double kmDomicileTravail;
+  final bool isPro;
 
   const ImpotsScreen({
     super.key,
@@ -30,6 +29,7 @@ class ImpotsScreen extends StatefulWidget {
     required this.primes,
     required this.primeAnnuelle,
     this.kmDomicileTravail = 0,
+    this.isPro = false,
   });
 
   @override
@@ -37,18 +37,7 @@ class ImpotsScreen extends StatefulWidget {
 }
 
 class _ImpotsScreenState extends State<ImpotsScreen> {
-  bool _isPro = false;
   bool _exportEnCours = false;
-
-  @override
-  void initState() { super.initState(); _verifierPro(); }
-
-  Future<void> _verifierPro() async {
-    final pro = await PurchaseService.isPro();
-    final tester = await Storage.isTesterPro();
-    if (!mounted) return;
-    setState(() => _isPro = pro || tester);
-  }
 
   Future<void> _exporterAttestation(int annee) async {
     setState(() => _exportEnCours = true);
@@ -439,7 +428,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: _exportEnCours ? null : () {
-                          if (_isPro) {
+                          if (widget.isPro) {
                             _exporterAttestation(annee);
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -447,16 +436,16 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                           }
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _isPro
+                          backgroundColor: widget.isPro
                               ? const Color(0xFF534AB7)
                               : AppTheme.blueAccent.withValues(alpha: 0.5),
                         ),
                         icon: _exportEnCours
                             ? const SizedBox(width: 16, height: 16,
                                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : Icon(_isPro ? Icons.picture_as_pdf : Icons.lock_outline, size: 18),
+                            : Icon(widget.isPro ? Icons.picture_as_pdf : Icons.lock_outline, size: 18),
                         label: Text(_exportEnCours ? 'Génération...'
-                            : _isPro
+                            : widget.isPro
                                 ? 'Exporter l\'attestation PDF'
                                 : 'Exporter l\'attestation (Pro)'),
                       ),

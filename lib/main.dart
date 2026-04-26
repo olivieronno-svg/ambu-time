@@ -5,6 +5,7 @@ import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'utils/ad_service.dart';
 import 'utils/cloud_sync_service.dart';
@@ -132,6 +133,8 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   String? _dernierUid;
   bool _syncHorsLigne = false; // évite les snackbars en rafale quand offline
 
+  void Function(CustomerInfo)? _customerInfoListener;
+
   @override
   void initState() {
     super.initState();
@@ -140,11 +143,26 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     AdService.initialiser();
     _dernierUid = FirebaseAuth.instance.currentUser?.uid;
     _authSub = FirebaseAuth.instance.authStateChanges().listen(_onAuthChange);
+
+    // RevenueCat notifie l'app a chaque changement d'abonnement (achat,
+    // expiration, restauration). Source unique de verite pour _isPro.
+    _customerInfoListener = (info) {
+      if (!mounted) return;
+      final pro = info.entitlements.active.containsKey(PurchaseService.entitlementId);
+      if (pro != _isPro) {
+        setState(() => _isPro = pro);
+        if (!_isPro) AdService.chargerInterstitielle();
+      }
+    };
+    Purchases.addCustomerInfoUpdateListener(_customerInfoListener!);
   }
 
   @override
   void dispose() {
     _authSub?.cancel();
+    if (_customerInfoListener != null) {
+      Purchases.removeCustomerInfoUpdateListener(_customerInfoListener!);
+    }
     super.dispose();
   }
 
@@ -612,6 +630,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         brutPeriodeRef: _brutPeriodeRef,
         onModifierGarde: _ouvrirModification,
         onSupprimerGarde: _supprimerGarde,
+        isPro: _isPro,
       ),
       ParametresScreen(
         tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
@@ -624,6 +643,8 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         congesAcquisAvant: _congesAcquisAvant, modeCp: _modeCp,
         brutPeriodeRef: _brutPeriodeRef,
         onSignInSuccess: _onSignInSuccess,
+        isPro: _isPro,
+        onPurchaseSuccess: _chargerStatutPro,
       ),
       ImpotsScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
@@ -631,8 +652,9 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         impotSource: _impotSource, primes: _primes,
         primeAnnuelle: _primeAnnuelleEffective,
         kmDomicileTravail: _kmDomicileTravail,
+        isPro: _isPro,
       ),
-      const InfoScreen(),
+      InfoScreen(isPro: _isPro),
     ];
 
     return Scaffold(

@@ -2,28 +2,15 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
-import '../utils/purchase_service.dart';
-import '../utils/storage.dart';
 
 class InfoScreen extends StatefulWidget {
-  const InfoScreen({super.key});
+  final bool isPro;
+  const InfoScreen({super.key, this.isPro = false});
   @override
   State<InfoScreen> createState() => _InfoScreenState();
 }
 
 class _InfoScreenState extends State<InfoScreen> {
-  bool _isPro = false;
-
-  @override
-  void initState() { super.initState(); _verifierPro(); }
-
-  Future<void> _verifierPro() async {
-    final pro = await PurchaseService.isPro();
-    final tester = await Storage.isTesterPro();
-    if (!mounted) return;
-    setState(() => _isPro = pro || tester);
-  }
-
   void _onVersionTap() {}
 
   Future<void> _ouvrirLien(String url) async {
@@ -62,7 +49,7 @@ class _InfoScreenState extends State<InfoScreen> {
                     child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                       Text('Version', style: TextStyle(fontSize: 12, color: AppTheme.textPrimary)),
                       Row(children: [
-                        if (_isPro) Container(
+                        if (widget.isPro) Container(
                           margin: const EdgeInsets.only(right: 8),
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
@@ -88,25 +75,25 @@ class _InfoScreenState extends State<InfoScreen> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(14),
               decoration: AppTheme.cardDecoration(
-                borderColor: _isPro
+                borderColor: widget.isPro
                     ? AppTheme.blueAccent.withValues(alpha: 0.3)
                     : AppTheme.bgCardBorder),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Icon(_isPro ? Icons.gavel : Icons.lock_outline,
+                  Icon(widget.isPro ? Icons.gavel : Icons.lock_outline,
                       size: 16,
-                      color: _isPro ? AppTheme.blueAccent : AppTheme.textTertiary),
+                      color: widget.isPro ? AppTheme.blueAccent : AppTheme.textTertiary),
                   const SizedBox(width: 8),
                   Text('Textes de référence',
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
-                          color: _isPro ? AppTheme.textPrimary : AppTheme.textTertiary)),
-                  if (_isPro) ...[
+                          color: widget.isPro ? AppTheme.textPrimary : AppTheme.textTertiary)),
+                  if (widget.isPro) ...[
                     const Spacer(),
                     AppTheme.badge('Pro', AppTheme.blueAccent.withValues(alpha: 0.15), AppTheme.blueAccent),
                   ],
                 ]),
                 const SizedBox(height: 8),
-                if (_isPro) ...[
+                if (widget.isPro) ...[
                   // ✅ Lien CCN Transports Sanitaires (correct)
                   _lienDroit(
                     'CCN Transports Sanitaires',

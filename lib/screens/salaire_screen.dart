@@ -47,34 +47,10 @@ class SalaireScreen extends StatelessWidget {
     this.onPrimeAnnuelleToggle,
   });
 
-  List<Map<String, dynamic>> _evolutionMensuelle() {
-    if (gardes.isEmpty) return [];
-    final Map<String, double> brutParMois = {};
-    for (final g in gardes.where((g) => !g.isCongesPaies)) {
-      final key = '${g.date.year}-${g.date.month.toString().padLeft(2, '0')}';
-      brutParMois[key] = (brutParMois[key] ?? 0) +
-          Calculs.salaireBrutGarde(g, taux: tauxHoraire, panier: panierRepas,
-              indDimanche: indemnitesDimanche, montantIdaj: montantIdaj);
-    }
-    final keys = brutParMois.keys.toList()..sort();
-    double cumul = 0;
-    List<Map<String, dynamic>> result = [];
-    for (int i = 0; i < keys.length; i++) {
-      cumul += brutParMois[keys[i]]!;
-      final parts = keys[i].split('-');
-      result.add({
-        'key': keys[i], 'annee': int.parse(parts[0]), 'mois': int.parse(parts[1]),
-        'brut': brutParMois[keys[i]]!, 'moyenne': cumul / (i + 1),
-      });
-    }
-    return result;
-  }
-
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final estMai = now.month == 5;
-    final evolution = _evolutionMensuelle();
 
     // ── Gardes du mois en cours uniquement pour la carte principale ──
     final gardesMoisCours = gardes.where((g) =>
@@ -457,39 +433,6 @@ class SalaireScreen extends StatelessWidget {
                   ]),
                 );
               }),
-
-              // ── Moyenne des salaires mensuels ───────────────────
-              if (evolution.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  decoration: AppTheme.cardDecoration(
-                      borderColor: AppTheme.colorGreen.withValues(alpha: 0.3)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-                      child: Row(children: [
-                        Icon(Icons.auto_graph, size: 16, color: AppTheme.colorGreen),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(
-                          'Prime annuelle',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary),
-                        )),
-                        Text(
-                          '${((evolution.last['moyenne'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)} €',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
-                              color: AppTheme.colorGreen),
-                        ),
-                      ]),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-                      child: Text('Versée en mai',
-                          style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
-                    ),
-                  ]),
-                ),
-              ],
 
               if (gardes.isEmpty)
                 Container(

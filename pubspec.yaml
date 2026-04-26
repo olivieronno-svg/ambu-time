@@ -3,7 +3,7 @@ name: ambulancier_app
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.17+32
+version: 1.0.18+33
 
 environment:
   sdk: ^3.11.4

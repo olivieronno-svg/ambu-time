@@ -5,7 +5,6 @@ import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'utils/ad_service.dart';
@@ -29,13 +28,6 @@ import 'app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Edge-to-edge requis par Android 15+ : le contenu peut s'afficher derriere
-  // status bar et navigation bar. Scaffold/SafeArea gerent le clipping.
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    systemNavigationBarColor: Colors.transparent,
-  ));
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await PurchaseService.initialiser();
   if (Platform.isIOS) {

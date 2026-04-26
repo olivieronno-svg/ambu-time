@@ -233,15 +233,9 @@ class Storage {
     await prefs.remove('app_planning_v1');
   }
 
-  /// Mode tester retiré depuis l'abonnement mensuel.
-  /// Retourne toujours false ET nettoie l'ancien flag sur les téléphones
-  /// des anciens testeurs (révocation automatique au prochain lancement).
   static Future<bool> isTesterPro() async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.containsKey(_testerProKey)) {
-      await prefs.remove(_testerProKey);
-    }
-    return false;
+    return prefs.getBool(_testerProKey) ?? false;
   }
 
   static Future<void> sauvegarderTheme(bool isDark) async {

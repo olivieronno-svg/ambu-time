@@ -195,9 +195,10 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         _debutQuatorzaine = null;
         _gardeAModifier = null;
         _currentIndex = 0;
-        _isPro = false;
       });
-      // Recharge le statut Pro (RevenueCat peut avoir un abonnement pour ce compte)
+      // _isPro n'est PAS reset : RevenueCat est lie au compte Google Play (pas
+      // au compte Firebase), donc l'abonnement reste actif au switch Firebase.
+      // Le listener Purchases.addCustomerInfoUpdateListener corrigera si besoin.
       _chargerStatutPro();
     }
     _dernierUid = nouvelUid;

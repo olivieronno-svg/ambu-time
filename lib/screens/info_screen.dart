@@ -175,7 +175,7 @@ class _InfoScreenState extends State<InfoScreen> {
                   'Politique de confidentialité',
                   'Comment tes données sont traitées',
                   Icons.privacy_tip_outlined,
-                  'https://onnoff-svg.github.io/ambutime/privacy.html',
+                  'https://olivieronno-svg.github.io/ambu-time/privacy.html',
                 ),
                 const SizedBox(height: 8),
                 _lienDroit(

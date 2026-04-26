@@ -128,12 +128,6 @@ class Storage {
     };
   }
 
-  // ⚠️ Mode tester retiré depuis le passage à l'abonnement mensuel.
-  // Cette méthode ne fait plus rien — conservée pour compat binaire éventuelle.
-  static Future<void> activerModeTester() async {
-    // no-op
-  }
-
   // ── EXPORT / IMPORT JSON ─────────────────────────────────────────
   static Future<void> exporterDonnees(List<Garde> gardes) async {
     final params = await chargerParametres();
@@ -236,6 +230,15 @@ class Storage {
   static Future<bool> isTesterPro() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_testerProKey) ?? false;
+  }
+
+  // Persiste localement le statut Pro pour les testeurs de licence Google
+  // Play : leur entitlement RevenueCat n'est pas garanti entre les sessions
+  // (sandbox), ce flag local le rattrape au prochain demarrage. Efface au
+  // switch de compte Firebase pour eviter les fuites de privilege.
+  static Future<void> setTesterPro(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_testerProKey, value);
   }
 
   static Future<void> sauvegarderTheme(bool isDark) async {

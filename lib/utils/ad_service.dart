@@ -70,7 +70,14 @@ class AdService {
     );
   }
 
-  static void afficherInterstitielle() {
+  static void afficherInterstitielle({required bool isPro}) {
+    // Re-check au moment du show : une interstitielle peut avoir ete prechargee
+    // avant que _isPro passe a true (achat en cours, restauration). On refuse
+    // l'affichage et on libere la pub en cache.
+    if (isPro) {
+      disposerInterstitielle();
+      return;
+    }
     if (_interstitielleChargee && _interstitielle != null) {
       _interstitielle!.show();
       _interstitielle = null;
@@ -78,5 +85,12 @@ class AdService {
       // Recharge pour la prochaine fois
       chargerInterstitielle();
     }
+  }
+
+  static void disposerInterstitielle() {
+    _interstitielle?.dispose();
+    _interstitielle = null;
+    _interstitielleChargee = false;
+    _chargementEnCours = false;
   }
 }

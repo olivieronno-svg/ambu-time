@@ -150,8 +150,15 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       if (!mounted) return;
       final pro = info.entitlements.active.containsKey(PurchaseService.entitlementId);
       if (pro != _isPro) {
-        setState(() => _isPro = pro);
-        if (!_isPro) AdService.chargerInterstitielle();
+        setState(() {
+          _isPro = pro;
+          if (pro) _compteurNavigation = 0;
+        });
+        if (_isPro) {
+          AdService.disposerInterstitielle();
+        } else {
+          AdService.chargerInterstitielle();
+        }
       }
     };
     Purchases.addCustomerInfoUpdateListener(_customerInfoListener!);
@@ -210,6 +217,27 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     if (!mounted) return;
     setState(() => _isPro = pro || tester);
     if (!_isPro) AdService.chargerInterstitielle();
+  }
+
+  // Bascule _isPro a true des le retour de PurchaseService.acheterPro
+  // (achat / restauration deja confirme par RevenueCat). Pas de re-check
+  // _chargerStatutPro ensuite : pour les testeurs de licence Google Play,
+  // getCustomerInfo retourne false (entitlement sandbox non persiste) et
+  // ecraserait _isPro juste apres l'avoir mis a true. Le listener
+  // Purchases.addCustomerInfoUpdateListener corrigera si l'entitlement
+  // change plus tard (expiration, annulation).
+  Future<void> _onAchatProSucces() async {
+    if (!mounted) return;
+    setState(() {
+      _isPro = true;
+      _compteurNavigation = 0;
+    });
+    AdService.disposerInterstitielle();
+    // Persistance locale pour les testeurs de licence Google Play : leur
+    // entitlement RevenueCat n'est pas garanti entre sessions (sandbox).
+    // Pour un vrai client, RevenueCat suffit ; ce flag est juste belt &
+    // suspenders. Le listener Purchases corrigera si l'entitlement expire.
+    await Storage.setTesterPro(true);
   }
 
   Future<void> _chargerDonnees() async {
@@ -520,7 +548,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     if (!_isPro) {
       _compteurNavigation = (_compteurNavigation ?? 0) + 1;
       if (_compteurNavigation! >= 3) {
-        AdService.afficherInterstitielle();
+        AdService.afficherInterstitielle(isPro: _isPro);
         _compteurNavigation = 0;
       }
     }
@@ -645,7 +673,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         brutPeriodeRef: _brutPeriodeRef,
         onSignInSuccess: _onSignInSuccess,
         isPro: _isPro,
-        onPurchaseSuccess: _chargerStatutPro,
+        onPurchaseSuccess: _onAchatProSucces,
       ),
       ImpotsScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,

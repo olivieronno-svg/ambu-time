@@ -42,6 +42,7 @@ class PurchaseService {
       final offerings = await Purchases.getOfferings();
       if (offerings.current == null ||
           offerings.current!.availablePackages.isEmpty) {
+        debugPrint('[PurchaseService] Aucun offering current dans RevenueCat');
         return AchatResult.offerIndisponible;
       }
       final package = offerings.current!.availablePackages.first;
@@ -49,14 +50,29 @@ class PurchaseService {
       if (result.customerInfo.entitlements.active.containsKey(entitlementId)) {
         return AchatResult.succes;
       }
+      debugPrint('[PurchaseService] Achat retourné sans entitlement actif');
       return AchatResult.echec;
     } on PlatformException catch (e) {
       final code = PurchasesErrorHelper.getErrorCode(e);
+      debugPrint('[PurchaseService] PlatformException: $code — ${e.message}');
       if (code == PurchasesErrorCode.purchaseCancelledError) {
         return AchatResult.annule;
       }
+      // Cas testeur ou réinstall : Google Play renvoie ITEM_ALREADY_OWNED
+      // → on tente une restauration pour synchroniser l'entitlement RevenueCat.
+      if (code == PurchasesErrorCode.productAlreadyPurchasedError) {
+        try {
+          final info = await Purchases.restorePurchases();
+          if (info.entitlements.active.containsKey(entitlementId)) {
+            return AchatResult.succes;
+          }
+        } catch (restoreError) {
+          debugPrint('[PurchaseService] Restore après already-purchased a échoué: $restoreError');
+        }
+      }
       return AchatResult.echec;
     } catch (e) {
+      debugPrint('[PurchaseService] Erreur inattendue: $e');
       return AchatResult.echec;
     }
   }

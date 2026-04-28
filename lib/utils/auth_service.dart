@@ -26,25 +26,29 @@ class AuthService {
   }
 
   static Future<UserCredential?> signInWithApple() async {
+    final rawNonce = _generateNonce();
+    final nonce = _sha256ofString(rawNonce);
+    final AuthorizationCredentialAppleID appleCredential;
     try {
-      final rawNonce = _generateNonce();
-      final nonce = _sha256ofString(rawNonce);
-      final appleCredential = await SignInWithApple.getAppleIDCredential(
+      appleCredential = await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,
           AppleIDAuthorizationScopes.fullName,
         ],
         nonce: nonce,
       );
-      final oauthCredential = OAuthProvider('apple.com').credential(
-        idToken: appleCredential.identityToken,
-        rawNonce: rawNonce,
-      );
-      return await _auth.signInWithCredential(oauthCredential);
-    } catch (e) {
-      debugPrint('Apple Sign-In erreur : $e');
-      return null;
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) return null;
+      rethrow;
     }
+    if (appleCredential.identityToken == null) {
+      throw Exception('Apple n\'a pas renvoyé d\'identityToken');
+    }
+    final oauthCredential = OAuthProvider('apple.com').credential(
+      idToken: appleCredential.identityToken,
+      rawNonce: rawNonce,
+    );
+    return await _auth.signInWithCredential(oauthCredential);
   }
 
   static Future<void> signOut() async {

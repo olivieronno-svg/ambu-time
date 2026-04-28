@@ -2480,72 +2480,32 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     if (picked != null) setState(() => _date = picked);
   }
 
-  void _ouvrirAjoutAchat({Achat? achat}) {
-    final intCtrl = TextEditingController(text: achat?.intitule ?? '');
-    final montantCtrl = TextEditingController(
-        text: achat != null ? achat.montant.toStringAsFixed(2) : '');
-    showModalBottomSheet(
+  Future<void> _ouvrirAjoutAchat({Achat? achat}) async {
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context, isScrollControlled: true,
       backgroundColor: const Color(0xFFEAF3DE),
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text(achat == null ? 'Nouvel achat' : 'Modifier l\'achat',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600,
-                    color: Color(0xFF173404))),
-            if (achat != null)
-              GestureDetector(
-                onTap: () { Navigator.pop(ctx);
-                  setState(() => _achats.removeWhere((a) => a.id == achat.id)); },
-                child: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
-              ),
-          ]),
-          const SizedBox(height: 14),
-          TextField(controller: intCtrl, autofocus: true,
-            style: const TextStyle(color: Color(0xFF173404)),
-            decoration: InputDecoration(labelText: 'Intitulé de l\'achat',
-                labelStyle: const TextStyle(color: Color(0xFF3B6D11)),
-                hintText: 'Ex: Carburant, Péage...',
-                hintStyle: const TextStyle(color: Color(0xFF639922)))),
-          const SizedBox(height: 12),
-          TextField(controller: montantCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(color: Color(0xFF173404)),
-            decoration: InputDecoration(labelText: 'Montant (€)',
-                labelStyle: const TextStyle(color: Color(0xFF3B6D11)),
-                suffixText: '€',
-                hintStyle: const TextStyle(color: Color(0xFF639922)))),
-          const SizedBox(height: 16),
-          SizedBox(width: double.infinity, child: ElevatedButton(
-            onPressed: () {
-              final int = intCtrl.text.trim();
-              if (int.isEmpty) return;
-              final montant = double.tryParse(
-                  montantCtrl.text.replaceAll(',', '.')) ?? 0;
-              if (achat == null) {
-                setState(() => _achats.add(Achat(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  intitule: int, montant: montant)));
-              } else {
-                setState(() { achat.intitule = int; achat.montant = montant; });
-              }
-              Navigator.pop(ctx);
-            },
-            child: Text(achat == null ? 'Ajouter' : 'Mettre à jour',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-          )),
-        ]),
-      ),
-    ).whenComplete(() {
-      // Libère les TextEditingController à la fermeture du modal
-      intCtrl.dispose();
-      montantCtrl.dispose();
-    });
+      builder: (ctx) => _AchatFormSheet(achat: achat),
+    );
+
+    if (!mounted || result == null) return;
+
+    final action = result['action'] as String;
+    if (action == 'save') {
+      final intitule = result['intitule'] as String;
+      final montant = result['montant'] as double;
+      if (intitule.isEmpty) return;
+      if (achat == null) {
+        setState(() => _achats.add(Achat(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          intitule: intitule, montant: montant)));
+      } else {
+        setState(() { achat.intitule = intitule; achat.montant = montant; });
+      }
+    } else if (action == 'delete' && achat != null) {
+      setState(() => _achats.removeWhere((a) => a.id == achat.id));
+    }
   }
 
   Widget _champHeure(String label, TextEditingController heureCtrl,
@@ -3430,6 +3390,83 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         Text(value, style: TextStyle(fontSize: 12,
             fontWeight: isBold ? FontWeight.w500 : FontWeight.normal,
             color: isBold ? AppTheme.colorGreen : AppTheme.blueAccent)),
+      ]),
+    );
+  }
+}
+
+class _AchatFormSheet extends StatefulWidget {
+  final Achat? achat;
+  const _AchatFormSheet({this.achat});
+
+  @override
+  State<_AchatFormSheet> createState() => _AchatFormSheetState();
+}
+
+class _AchatFormSheetState extends State<_AchatFormSheet> {
+  late final TextEditingController _intCtrl;
+  late final TextEditingController _montantCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _intCtrl = TextEditingController(text: widget.achat?.intitule ?? '');
+    _montantCtrl = TextEditingController(
+        text: widget.achat != null ? widget.achat!.montant.toStringAsFixed(2) : '');
+  }
+
+  @override
+  void dispose() {
+    _intCtrl.dispose();
+    _montantCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: 20, right: 20, top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(widget.achat == null ? 'Nouvel achat' : 'Modifier l\'achat',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600,
+                  color: Color(0xFF173404))),
+          if (widget.achat != null)
+            GestureDetector(
+              onTap: () => Navigator.pop(context, {'action': 'delete'}),
+              child: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
+            ),
+        ]),
+        const SizedBox(height: 14),
+        TextField(controller: _intCtrl, autofocus: true,
+          style: const TextStyle(color: Color(0xFF173404)),
+          decoration: InputDecoration(labelText: 'Intitulé de l\'achat',
+              labelStyle: const TextStyle(color: Color(0xFF3B6D11)),
+              hintText: 'Ex: Carburant, Péage...',
+              hintStyle: const TextStyle(color: Color(0xFF639922)))),
+        const SizedBox(height: 12),
+        TextField(controller: _montantCtrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: const TextStyle(color: Color(0xFF173404)),
+          decoration: InputDecoration(labelText: 'Montant (€)',
+              labelStyle: const TextStyle(color: Color(0xFF3B6D11)),
+              suffixText: '€',
+              hintStyle: const TextStyle(color: Color(0xFF639922)))),
+        const SizedBox(height: 16),
+        SizedBox(width: double.infinity, child: ElevatedButton(
+          onPressed: () {
+            if (_intCtrl.text.trim().isEmpty) return;
+            Navigator.pop(context, {
+              'action': 'save',
+              'intitule': _intCtrl.text.trim(),
+              'montant': double.tryParse(_montantCtrl.text.replaceAll(',', '.')) ?? 0.0,
+            });
+          },
+          child: Text(widget.achat == null ? 'Ajouter' : 'Mettre à jour',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        )),
       ]),
     );
   }

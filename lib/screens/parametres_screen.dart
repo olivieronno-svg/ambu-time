@@ -341,7 +341,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
     }
   }
 
-  void _ouvrirEditeurPrime({PrimeMensuelle? prime}) {
+  Future<void> _ouvrirEditeurPrime({PrimeMensuelle? prime}) async {
     final nomCtrl = TextEditingController(text: prime?.nom ?? '');
     final montantCtrl = TextEditingController(
         text: prime != null ? prime.montant.toStringAsFixed(2) : '');
@@ -350,7 +350,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
     String moisSelectionne = prime?.mois ??
         '${now.year}-${now.month.toString().padLeft(2, '0')}';
 
-    showModalBottomSheet(
+    final result = await showModalBottomSheet<String>(
       context: context, isScrollControlled: true,
       backgroundColor: const Color(0xFFF5C4B3),
       shape: const RoundedRectangleBorder(
@@ -367,8 +367,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
                       color: Color(0xFF711B0C))),
               if (prime != null)
                 GestureDetector(
-                  onTap: () { Navigator.pop(ctx);
-                    setState(() => _primes.removeWhere((p) => p.id == prime.id)); },
+                  onTap: () => Navigator.pop(ctx, 'delete'),
                   child: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
                 ),
             ]),
@@ -426,21 +425,8 @@ class _ParametresScreenState extends State<ParametresScreen> {
             const SizedBox(height: 16),
             SizedBox(width: double.infinity, child: ElevatedButton(
               onPressed: () {
-                final nom = nomCtrl.text.trim();
-                if (nom.isEmpty) return;
-                final montant = double.tryParse(montantCtrl.text.replaceAll(',', '.')) ?? 0;
-                if (prime == null) {
-                  setState(() => _primes.add(PrimeMensuelle(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
-                      nom: nom, montant: montant, mois: moisSelectionne)));
-                } else {
-                  setState(() {
-                    prime.nom = nom;
-                    prime.montant = montant;
-                    prime.mois = moisSelectionne;
-                  });
-                }
-                Navigator.pop(ctx);
+                if (nomCtrl.text.trim().isEmpty) return;
+                Navigator.pop(ctx, 'save');
               },
               child: Text(prime == null ? 'Ajouter' : 'Mettre à jour',
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
@@ -448,11 +434,30 @@ class _ParametresScreenState extends State<ParametresScreen> {
           ]),
         ),
       ),
-    ).whenComplete(() {
-      // Libère les TextEditingController à la fermeture du modal
-      nomCtrl.dispose();
-      montantCtrl.dispose();
-    });
+    );
+
+    final nom = nomCtrl.text.trim();
+    final montant = double.tryParse(montantCtrl.text.replaceAll(',', '.')) ?? 0;
+    nomCtrl.dispose();
+    montantCtrl.dispose();
+
+    if (!mounted) return;
+
+    if (result == 'save' && nom.isNotEmpty) {
+      if (prime == null) {
+        setState(() => _primes.add(PrimeMensuelle(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            nom: nom, montant: montant, mois: moisSelectionne)));
+      } else {
+        setState(() {
+          prime.nom = nom;
+          prime.montant = montant;
+          prime.mois = moisSelectionne;
+        });
+      }
+    } else if (result == 'delete' && prime != null) {
+      setState(() => _primes.removeWhere((p) => p.id == prime.id));
+    }
   }
 
   @override
@@ -549,8 +554,17 @@ class _ParametresScreenState extends State<ParametresScreen> {
                         const SizedBox(height: 8),
                         SizedBox(width: double.infinity, child: ElevatedButton.icon(
                           onPressed: () async {
-                            final cred = await AuthService.signInWithApple();
-                            if (cred != null) await widget.onSignInSuccess?.call();
+                            final messenger = ScaffoldMessenger.of(context);
+                            try {
+                              final cred = await AuthService.signInWithApple();
+                              if (cred != null) await widget.onSignInSuccess?.call();
+                            } catch (e) {
+                              messenger.showSnackBar(SnackBar(
+                                content: Text('Erreur Apple : $e'),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 8),
+                              ));
+                            }
                           },
                           icon: const Icon(Icons.apple, size: 20),
                           label: const Text('Continuer avec Apple'),

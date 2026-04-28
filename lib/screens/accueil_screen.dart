@@ -67,7 +67,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
         _planning.map((g) => jsonEncode(g.toMap())).toList());
   }
 
-  void _ouvrirAjoutPlanning({PlannedGarde? garde}) {
+  Future<void> _ouvrirAjoutPlanning({PlannedGarde? garde}) async {
     DateTime dateSelectionnee = garde?.date ?? DateTime.now().add(const Duration(days: 1));
     int dhH = garde?.heureDebutH ?? 7, dhM = garde?.heureDebutM ?? 0;
     int dfH = garde?.heureFinH ?? 17, dfM = garde?.heureFinM ?? 0;
@@ -79,7 +79,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
     final dfHCtrl = TextEditingController(text: dfH.toString().padLeft(2, '0'));
     final dfMCtrl = TextEditingController(text: dfM.toString().padLeft(2, '0'));
 
-    showModalBottomSheet(
+    final result = await showModalBottomSheet<String>(
       context: context, isScrollControlled: true,
       backgroundColor: const Color(0xFFB5D4F4).withValues(alpha: 0.97),
       shape: const RoundedRectangleBorder(
@@ -97,12 +97,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                     fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF042C53))),
                 if (garde != null)
                   GestureDetector(
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      setState(() { _planning.removeWhere((g) => g.id == garde.id); });
-                      _sauvegarderPlanning();
-                      NotificationService.annulerAlarme(garde.id);
-                    },
+                    onTap: () => Navigator.pop(ctx, 'delete'),
                     child: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
                   ),
               ]),
@@ -217,25 +212,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
               const SizedBox(height: 16),
 
               SizedBox(width: double.infinity, child: ElevatedButton(
-                onPressed: () {
-                  final pg = PlannedGarde(
-                    id: garde?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-                    date: dateSelectionnee,
-                    heureDebutH: dhH, heureDebutM: dhM,
-                    heureFinH: dfH, heureFinM: dfM,
-                    typeGarde: typeGarde,
-                    collegue: collegueCtrl.text.trim().isEmpty ? null : collegueCtrl.text.trim(),
-                  );
-                  setState(() {
-                    _planning.removeWhere((g) => g.id == pg.id);
-                    _planning.add(pg);
-                    _planning.sort((a, b) => a.date.compareTo(b.date));
-                  });
-                  _sauvegarderPlanning();
-                  // Programme les rappels (1h avant + 6h le matin du jour J)
-                  NotificationService.programmerAlarme(pg);
-                  Navigator.pop(ctx);
-                },
+                onPressed: () => Navigator.pop(ctx, 'save'),
                 child: Text(garde == null ? 'Ajouter au planning' : 'Mettre à jour',
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
               )),
@@ -244,14 +221,39 @@ class _AccueilScreenState extends State<AccueilScreen> {
           ),
         ),
       ),
-    ).whenComplete(() {
-      // Libère les TextEditingController à la fermeture du modal
-      collegueCtrl.dispose();
-      dhHCtrl.dispose();
-      dhMCtrl.dispose();
-      dfHCtrl.dispose();
-      dfMCtrl.dispose();
-    });
+    );
+
+    final collegue = collegueCtrl.text.trim();
+    collegueCtrl.dispose();
+    dhHCtrl.dispose();
+    dhMCtrl.dispose();
+    dfHCtrl.dispose();
+    dfMCtrl.dispose();
+
+    if (!mounted) return;
+
+    if (result == 'save') {
+      final pg = PlannedGarde(
+        id: garde?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        date: dateSelectionnee,
+        heureDebutH: dhH, heureDebutM: dhM,
+        heureFinH: dfH, heureFinM: dfM,
+        typeGarde: typeGarde,
+        collegue: collegue.isEmpty ? null : collegue,
+      );
+      setState(() {
+        _planning.removeWhere((g) => g.id == pg.id);
+        _planning.add(pg);
+        _planning.sort((a, b) => a.date.compareTo(b.date));
+      });
+      _sauvegarderPlanning();
+      // Programme les rappels (1h avant + 6h le matin du jour J)
+      NotificationService.programmerAlarme(pg);
+    } else if (result == 'delete' && garde != null) {
+      setState(() => _planning.removeWhere((g) => g.id == garde.id));
+      _sauvegarderPlanning();
+      NotificationService.annulerAlarme(garde.id);
+    }
   }
 
   void _supprimerGardePlanning(PlannedGarde g) {

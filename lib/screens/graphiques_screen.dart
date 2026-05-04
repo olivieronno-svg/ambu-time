@@ -289,6 +289,27 @@ class _GraphiquesScreenState extends State<GraphiquesScreen> {
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
           const SizedBox(height: 16),
           SizedBox(height: 200, child: LineChart(LineChartData(
+            lineTouchData: LineTouchData(
+              touchTooltipData: LineTouchTooltipData(
+                getTooltipColor: (_) => AppTheme.isDark
+                    ? const Color(0xFF1d4ed8) : Colors.white,
+                getTooltipItems: (touchedSpots) {
+                  return touchedSpots.map((spot) {
+                    final idx = spot.x.toInt();
+                    final mois = (idx >= 0 && idx < donnees.length)
+                        ? _nomMoisCourt(donnees[idx].mois) : '';
+                    final label = _afficherSalaire
+                        ? '${spot.y.toStringAsFixed(2)} €'
+                        : Calculs.formatHeures(spot.y);
+                    return LineTooltipItem(
+                      '$mois\n$label',
+                      TextStyle(color: AppTheme.textPrimary,
+                          fontSize: 12, fontWeight: FontWeight.w600),
+                    );
+                  }).toList();
+                },
+              ),
+            ),
             lineBarsData: [LineChartBarData(
               spots: donnees.asMap().entries.map((e) {
                 final val = _afficherSalaire ? e.value.net : e.value.heures;

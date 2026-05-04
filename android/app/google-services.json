@@ -30,6 +30,14 @@
           }
         },
         {
+          "client_id": "944165086970-kt4gbm0rcg1f2tc6kmq6bv7mmdl72g0s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.onnoff.ambutime",
+            "certificate_hash": "5e25a7a66fa5a819e290528827a3badad5f2033d"
+          }
+        },
+        {
           "client_id": "944165086970-j655rd9vhb7oo8hsraba0sjjfign4244.apps.googleusercontent.com",
           "client_type": 3
         }

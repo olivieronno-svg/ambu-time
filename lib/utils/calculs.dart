@@ -7,11 +7,49 @@ class Calculs {
   static const double indemnitesDimancheDefaut = 26.00;
   static const double idajMontantDefaut = 35.00;
 
-  static double heuresNuit(Garde g) => g.heuresNuitMinutes / 60;
+  // ── Réglages réglables depuis Paramètres ─────────────────────────────────
+  // Majoration de nuit
+  static bool majorationNuitActivee = true;
+  static double majorationNuitPourcentage = 25; // % du taux horaire
+  static int majorationNuitDebut = 21; // heure de début de la "nuit" (fin = 6h)
+
+  // IDAJ (indemnité de dépassement d'amplitude journalière)
+  // Deux tranches configurables. La tranche 2 ne s'applique que si son seuil
+  // est strictement supérieur à celui de la tranche 1 — sinon seule la tranche
+  // 1 est utilisée sur l'intégralité du dépassement.
+  static bool idajActivee = true;
+  static double idajPourcentage = 100;     // % de la tranche 1
+  static double idajSeuilHeures = 12;      // seuil tranche 1 (en h)
+  static double idajTier2Pourcentage = 100; // % de la tranche 2
+  static double idajTier2Seuil = 12;        // seuil tranche 2 (en h)
+
+  // Calcule les minutes "de nuit" d'une garde, fenêtre [majorationNuitDebut, 6h[.
+  static int heuresNuitMinutes(Garde g) {
+    if (g.jourNonTravaille) return 0;
+    final debut = majorationNuitDebut.clamp(0, 23);
+    int total = 0;
+    DateTime day = DateTime(g.heureDebut.year, g.heureDebut.month, g.heureDebut.day);
+    final lastDay = DateTime(g.heureFin.year, g.heureFin.month, g.heureFin.day);
+    while (!day.isAfter(lastDay)) {
+      for (final interval in [
+        [day, day.add(const Duration(hours: 6))],
+        [day.add(Duration(hours: debut)), day.add(const Duration(hours: 24))],
+      ]) {
+        final s = g.heureDebut.isAfter(interval[0]) ? g.heureDebut : interval[0];
+        final e = g.heureFin.isBefore(interval[1]) ? g.heureFin : interval[1];
+        if (e.isAfter(s)) total += e.difference(s).inMinutes;
+      }
+      day = day.add(const Duration(days: 1));
+    }
+    return total.clamp(0, g.dureeMinutes);
+  }
+
+  static double heuresNuit(Garde g) => heuresNuitMinutes(g) / 60;
 
   static double majorationNuit(Garde g, double taux) {
+    if (!majorationNuitActivee) return 0;
     final t = g.tauxHoraireUtilise ?? taux;
-    return heuresNuit(g) * t * 0.25;
+    return heuresNuit(g) * t * (majorationNuitPourcentage / 100);
   }
 
   // Majoration 25% sur toute la durée si dimanche ou jour férié
@@ -21,26 +59,21 @@ class Calculs {
     return g.dureeHeures * t * 0.25;
   }
 
-  // IDAJ : majoration sur l'amplitude au-delà de 12h
-  // 12h → 13h : +75% du taux horaire
-  // au-delà de 13h : +100% du taux horaire
+  // IDAJ : majoration sur l'amplitude au-delà du seuil configuré, à 2 tranches
   static double idaj(Garde g, double taux) {
-    if (!g.hasIDAJ) return 0;
+    if (!idajActivee || g.jourNonTravaille) return 0;
     final t = g.tauxHoraireUtilise ?? taux;
     final amplitudeH = g.amplitudeMinutes / 60;
-    double indemnite = 0;
+    if (amplitudeH <= idajSeuilHeures) return 0;
 
-    // Tranche 12h → 13h : 75% du taux sur les minutes dans cette tranche
-    final tranche1 = (amplitudeH.clamp(12, 13) - 12); // en heures
-    indemnite += tranche1 * t * 0.75;
-
-    // Tranche > 13h : 100% du taux sur le reste
-    if (amplitudeH > 13) {
-      final tranche2 = amplitudeH - 13;
-      indemnite += tranche2 * t * 1.00;
+    final tier2Active = idajTier2Seuil > idajSeuilHeures;
+    if (!tier2Active || amplitudeH <= idajTier2Seuil) {
+      return (amplitudeH - idajSeuilHeures) * t * (idajPourcentage / 100);
     }
-
-    return indemnite;
+    final h1 = idajTier2Seuil - idajSeuilHeures;
+    final h2 = amplitudeH - idajTier2Seuil;
+    return h1 * t * (idajPourcentage / 100)
+         + h2 * t * (idajTier2Pourcentage / 100);
   }
 
   static double salaireBrutGarde(

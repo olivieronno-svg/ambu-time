@@ -529,7 +529,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
             cardBg = const Color(0xFFFFFBEB); cardBorder = const Color(0xFFBA7517);
             lineColor = const Color(0xFFFDE68A); brutColor = const Color(0xFFBA7517);
             badgeLabel = g.nomJourFerie ?? 'Dimanche';
-          } else if (g.heuresNuitMinutes > 0) {
+          } else if (Calculs.heuresNuitMinutes(g) > 0) {
             dayBg = const Color(0xFFAFA9EC); dayText = const Color(0xFF26215C);
             cardBg = const Color(0xFFF5F4FE); cardBorder = const Color(0xFF7F77DD);
             lineColor = const Color(0xFFAFA9EC); brutColor = const Color(0xFF0F6E56);

@@ -123,6 +123,14 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   int _modeCp = 0;
   double _brutPeriodeRef = 0;
   bool _primeAnnuelleActivee = true;
+  bool _majorationNuitActivee = true;
+  double _majorationNuitPourcentage = 25;
+  int _majorationNuitDebut = 21;
+  bool _idajActivee = true;
+  double _idajPourcentage = 100;
+  double _idajSeuilHeures = 12;
+  double _idajTier2Pourcentage = 100;
+  double _idajTier2Seuil = 12;
   DateTime? _debutQuatorzaine;
   bool _chargement = true;
   bool _isPro = false;
@@ -199,6 +207,22 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         _congesAcquisAvant = 0;
         _modeCp = 0;
         _brutPeriodeRef = 0;
+        _majorationNuitActivee = true;
+        _majorationNuitPourcentage = 25;
+        _majorationNuitDebut = 21;
+        _idajActivee = true;
+        _idajPourcentage = 100;
+        _idajSeuilHeures = 12;
+        _idajTier2Pourcentage = 100;
+        _idajTier2Seuil = 12;
+        Calculs.majorationNuitActivee = true;
+        Calculs.majorationNuitPourcentage = 25;
+        Calculs.majorationNuitDebut = 21;
+        Calculs.idajActivee = true;
+        Calculs.idajPourcentage = 100;
+        Calculs.idajSeuilHeures = 12;
+        Calculs.idajTier2Pourcentage = 100;
+        Calculs.idajTier2Seuil = 12;
         _debutQuatorzaine = null;
         _gardeAModifier = null;
         _currentIndex = 0;
@@ -292,6 +316,22 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         _modeCp = params['modeCp'] as int? ?? 0;
         _brutPeriodeRef = (params['brutPeriodeRef'] as num?)?.toDouble() ?? 0.0;
         _primeAnnuelleActivee = params['primeAnnuelleActivee'] as bool? ?? true;
+        _majorationNuitActivee = params['majorationNuitActivee'] as bool? ?? true;
+        _majorationNuitPourcentage = (params['majorationNuitPourcentage'] as num?)?.toDouble() ?? 25.0;
+        _majorationNuitDebut = (params['majorationNuitDebut'] as num?)?.toInt() ?? 21;
+        _idajActivee = params['idajActivee'] as bool? ?? true;
+        _idajPourcentage = (params['idajPourcentage'] as num?)?.toDouble() ?? 100.0;
+        _idajSeuilHeures = (params['idajSeuilHeures'] as num?)?.toDouble() ?? 12.0;
+        _idajTier2Pourcentage = (params['idajTier2Pourcentage'] as num?)?.toDouble() ?? 100.0;
+        _idajTier2Seuil = (params['idajTier2Seuil'] as num?)?.toDouble() ?? 12.0;
+        Calculs.majorationNuitActivee = _majorationNuitActivee;
+        Calculs.majorationNuitPourcentage = _majorationNuitPourcentage;
+        Calculs.majorationNuitDebut = _majorationNuitDebut;
+        Calculs.idajActivee = _idajActivee;
+        Calculs.idajPourcentage = _idajPourcentage;
+        Calculs.idajSeuilHeures = _idajSeuilHeures;
+        Calculs.idajTier2Pourcentage = _idajTier2Pourcentage;
+        Calculs.idajTier2Seuil = _idajTier2Seuil;
         _chargement = false;
       });
 
@@ -343,7 +383,15 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   Future<void> _modifierParametres(double taux, double panier, double dimanche,
       double idaj, DateTime? debutQuatorzaine, List<PrimeMensuelle> primes,
       double impotSource, double kmDomicileTravail, String poste,
-      [double congesAcquisAvant = 0, int modeCp = 0, double brutPeriodeRef = 0]) async {
+      [double congesAcquisAvant = 0, int modeCp = 0, double brutPeriodeRef = 0,
+      bool majorationNuitActivee = true,
+      double majorationNuitPourcentage = 25,
+      int majorationNuitDebut = 21,
+      bool idajActivee = true,
+      double idajPourcentage = 100,
+      double idajSeuilHeures = 12,
+      double idajTier2Pourcentage = 100,
+      double idajTier2Seuil = 12]) async {
     _invaliderCacheQuatorzaine();
     setState(() {
       _tauxHoraire = taux; _panierRepas = panier;
@@ -352,6 +400,22 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       _impotSource = impotSource; _kmDomicileTravail = kmDomicileTravail;
       _poste = poste; _congesAcquisAvant = congesAcquisAvant;
       _modeCp = modeCp; _brutPeriodeRef = brutPeriodeRef;
+      _majorationNuitActivee = majorationNuitActivee;
+      _majorationNuitPourcentage = majorationNuitPourcentage;
+      _majorationNuitDebut = majorationNuitDebut;
+      _idajActivee = idajActivee;
+      _idajPourcentage = idajPourcentage;
+      _idajSeuilHeures = idajSeuilHeures;
+      _idajTier2Pourcentage = idajTier2Pourcentage;
+      _idajTier2Seuil = idajTier2Seuil;
+      Calculs.majorationNuitActivee = majorationNuitActivee;
+      Calculs.majorationNuitPourcentage = majorationNuitPourcentage;
+      Calculs.majorationNuitDebut = majorationNuitDebut;
+      Calculs.idajActivee = idajActivee;
+      Calculs.idajPourcentage = idajPourcentage;
+      Calculs.idajSeuilHeures = idajSeuilHeures;
+      Calculs.idajTier2Pourcentage = idajTier2Pourcentage;
+      Calculs.idajTier2Seuil = idajTier2Seuil;
     });
     await Storage.sauvegarderParametres(
       taux: taux, panier: panier, dimanche: dimanche, idaj: idaj,
@@ -359,6 +423,15 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       impotSource: impotSource, kmDomicileTravail: kmDomicileTravail,
       poste: poste, congesAcquisAvant: congesAcquisAvant, modeCp: modeCp,
       brutPeriodeRef: brutPeriodeRef,
+      primeAnnuelleActivee: _primeAnnuelleActivee,
+      majorationNuitActivee: majorationNuitActivee,
+      majorationNuitPourcentage: majorationNuitPourcentage,
+      majorationNuitDebut: majorationNuitDebut,
+      idajActivee: idajActivee,
+      idajPourcentage: idajPourcentage,
+      idajSeuilHeures: idajSeuilHeures,
+      idajTier2Pourcentage: idajTier2Pourcentage,
+      idajTier2Seuil: idajTier2Seuil,
     );
     _syncToCloud();
   }
@@ -384,6 +457,15 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
           'kmDomicileTravail': _kmDomicileTravail, 'poste': _poste,
           'congesAcquisAvant': _congesAcquisAvant, 'modeCp': _modeCp,
           'brutPeriodeRef': _brutPeriodeRef,
+          'primeAnnuelleActivee': _primeAnnuelleActivee,
+          'majorationNuitActivee': _majorationNuitActivee,
+          'majorationNuitPourcentage': _majorationNuitPourcentage,
+          'majorationNuitDebut': _majorationNuitDebut,
+          'idajActivee': _idajActivee,
+          'idajPourcentage': _idajPourcentage,
+          'idajSeuilHeures': _idajSeuilHeures,
+          'idajTier2Pourcentage': _idajTier2Pourcentage,
+          'idajTier2Seuil': _idajTier2Seuil,
         },
         planningMaps: planningMaps,
       );
@@ -515,6 +597,15 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       congesAcquisAvant: (p['congesAcquisAvant'] as num?)?.toDouble() ?? _congesAcquisAvant,
       modeCp: p['modeCp'] as int? ?? _modeCp,
       brutPeriodeRef: (p['brutPeriodeRef'] as num?)?.toDouble() ?? _brutPeriodeRef,
+      primeAnnuelleActivee: p['primeAnnuelleActivee'] as bool? ?? _primeAnnuelleActivee,
+      majorationNuitActivee: p['majorationNuitActivee'] as bool? ?? _majorationNuitActivee,
+      majorationNuitPourcentage: (p['majorationNuitPourcentage'] as num?)?.toDouble() ?? _majorationNuitPourcentage,
+      majorationNuitDebut: (p['majorationNuitDebut'] as num?)?.toInt() ?? _majorationNuitDebut,
+      idajActivee: p['idajActivee'] as bool? ?? _idajActivee,
+      idajPourcentage: (p['idajPourcentage'] as num?)?.toDouble() ?? _idajPourcentage,
+      idajSeuilHeures: (p['idajSeuilHeures'] as num?)?.toDouble() ?? _idajSeuilHeures,
+      idajTier2Pourcentage: (p['idajTier2Pourcentage'] as num?)?.toDouble() ?? _idajTier2Pourcentage,
+      idajTier2Seuil: (p['idajTier2Seuil'] as num?)?.toDouble() ?? _idajTier2Seuil,
     );
 
     if (!mounted) return;
@@ -533,6 +624,23 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       _congesAcquisAvant = (p['congesAcquisAvant'] as num?)?.toDouble() ?? _congesAcquisAvant;
       _modeCp = p['modeCp'] as int? ?? _modeCp;
       _brutPeriodeRef = (p['brutPeriodeRef'] as num?)?.toDouble() ?? _brutPeriodeRef;
+      _primeAnnuelleActivee = p['primeAnnuelleActivee'] as bool? ?? _primeAnnuelleActivee;
+      _majorationNuitActivee = p['majorationNuitActivee'] as bool? ?? _majorationNuitActivee;
+      _majorationNuitPourcentage = (p['majorationNuitPourcentage'] as num?)?.toDouble() ?? _majorationNuitPourcentage;
+      _majorationNuitDebut = (p['majorationNuitDebut'] as num?)?.toInt() ?? _majorationNuitDebut;
+      _idajActivee = p['idajActivee'] as bool? ?? _idajActivee;
+      _idajPourcentage = (p['idajPourcentage'] as num?)?.toDouble() ?? _idajPourcentage;
+      _idajSeuilHeures = (p['idajSeuilHeures'] as num?)?.toDouble() ?? _idajSeuilHeures;
+      _idajTier2Pourcentage = (p['idajTier2Pourcentage'] as num?)?.toDouble() ?? _idajTier2Pourcentage;
+      _idajTier2Seuil = (p['idajTier2Seuil'] as num?)?.toDouble() ?? _idajTier2Seuil;
+      Calculs.majorationNuitActivee = _majorationNuitActivee;
+      Calculs.majorationNuitPourcentage = _majorationNuitPourcentage;
+      Calculs.majorationNuitDebut = _majorationNuitDebut;
+      Calculs.idajActivee = _idajActivee;
+      Calculs.idajPourcentage = _idajPourcentage;
+      Calculs.idajSeuilHeures = _idajSeuilHeures;
+      Calculs.idajTier2Pourcentage = _idajTier2Pourcentage;
+      Calculs.idajTier2Seuil = _idajTier2Seuil;
     });
     messenger.showSnackBar(
       const SnackBar(content: Text('✓ Données restaurées depuis le cloud')),
@@ -592,6 +700,14 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
       poste: _poste, congesAcquisAvant: _congesAcquisAvant, modeCp: _modeCp,
       brutPeriodeRef: _brutPeriodeRef,
       primeAnnuelleActivee: _primeAnnuelleActivee,
+      majorationNuitActivee: _majorationNuitActivee,
+      majorationNuitPourcentage: _majorationNuitPourcentage,
+      majorationNuitDebut: _majorationNuitDebut,
+      idajActivee: _idajActivee,
+      idajPourcentage: _idajPourcentage,
+      idajSeuilHeures: _idajSeuilHeures,
+      idajTier2Pourcentage: _idajTier2Pourcentage,
+      idajTier2Seuil: _idajTier2Seuil,
     );
     _syncToCloud();
   }
@@ -671,6 +787,14 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         kmDomicileTravail: _kmDomicileTravail, poste: _poste,
         congesAcquisAvant: _congesAcquisAvant, modeCp: _modeCp,
         brutPeriodeRef: _brutPeriodeRef,
+        majorationNuitActivee: _majorationNuitActivee,
+        majorationNuitPourcentage: _majorationNuitPourcentage,
+        majorationNuitDebut: _majorationNuitDebut,
+        idajActivee: _idajActivee,
+        idajPourcentage: _idajPourcentage,
+        idajSeuilHeures: _idajSeuilHeures,
+        idajTier2Pourcentage: _idajTier2Pourcentage,
+        idajTier2Seuil: _idajTier2Seuil,
         onSignInSuccess: _onSignInSuccess,
         isPro: _isPro,
         onPurchaseSuccess: _onAchatProSucces,

@@ -287,15 +287,23 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
         tSav.contains('sauvegarde') || tSav.contains('enregistre')) {
       setState(() => _etatConv = '');
       if (_checkCPChevauchement()) return;
-      final ok = _enregistrerGarde();
-      if (!ok) {
-        await _parler('Erreur, impossible d\'enregistrer : heure de début et de fin identiques.');
-        return;
+      // Pré-validation avant de parler : la sauvegarde déclenche un changement
+      // d'écran qui démonte ce widget, et son dispose() coupe le TTS en cours.
+      // On annonce "Parfait..." avant le save, pour que la phrase finisse de
+      // s'énoncer avant que le démontage n'arrive.
+      if (!_jourNonTravaille && !_isCongesPaies) {
+        final dh = _val(_debutHeureCtrl, 23);
+        final dm = _val(_debutMinCtrl, 59);
+        final fh = _val(_finHeureCtrl, 23);
+        final fm = _val(_finMinCtrl, 59);
+        if (dh == fh && dm == fm) {
+          await _parler('Erreur, impossible d\'enregistrer : heure de début et de fin identiques.');
+          return;
+        }
       }
       await _parler('Parfait, garde enregistrée !');
-      Future.delayed(const Duration(milliseconds: 2000), () {
-        if (mounted) _reinitialiserFormulaire();
-      });
+      if (!mounted) return;
+      _enregistrerGarde();
       return;
     }
 
@@ -1236,15 +1244,20 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
               return;
             }
           }
-          final okConf = _enregistrerGarde();
-          if (!okConf) {
-            await _parler('Erreur, impossible d\'enregistrer : heure de début et de fin identiques.');
-            return;
+          // Pré-validation avant le speak — voir commentaire dans le bloc save global.
+          if (!_jourNonTravaille && !_isCongesPaies) {
+            final dh = _val(_debutHeureCtrl, 23);
+            final dm = _val(_debutMinCtrl, 59);
+            final fh = _val(_finHeureCtrl, 23);
+            final fm = _val(_finMinCtrl, 59);
+            if (dh == fh && dm == fm) {
+              await _parler('Erreur, impossible d\'enregistrer : heure de début et de fin identiques.');
+              return;
+            }
           }
           await _parler(_isCongesPaies ? 'Congés payés enregistrés !' : 'Parfait, garde enregistrée !');
-          Future.delayed(const Duration(milliseconds: 2000), () {
-            if (mounted) _reinitialiserFormulaire();
-          });
+          if (!mounted) return;
+          _enregistrerGarde();
         } else if (t.contains('non') || t.contains('annule') || t.contains('modifier')) {
           _reinitialiserFormulaire();
           await _parler('D\'accord, formulaire réinitialisé.');
@@ -1256,12 +1269,20 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       case 'confirmer_doublon':
         if (t.contains('oui') || t.contains('quand meme') || t.contains('confirme')) {
           setState(() => _etatConv = '');
-          final okDbl = _enregistrerGarde();
-          if (!okDbl) {
-            await _parler('Erreur, impossible d\'enregistrer : heure de début et de fin identiques.');
-            return;
+          // Pré-validation avant le speak — voir commentaire dans le bloc save global.
+          if (!_jourNonTravaille && !_isCongesPaies) {
+            final dh = _val(_debutHeureCtrl, 23);
+            final dm = _val(_debutMinCtrl, 59);
+            final fh = _val(_finHeureCtrl, 23);
+            final fm = _val(_finMinCtrl, 59);
+            if (dh == fh && dm == fm) {
+              await _parler('Erreur, impossible d\'enregistrer : heure de début et de fin identiques.');
+              return;
+            }
           }
           await _parler('Garde enregistrée !');
+          if (!mounted) return;
+          _enregistrerGarde();
           Future.delayed(const Duration(milliseconds: 1800), () {
             if (mounted) {
               setState(() {
@@ -1301,11 +1322,10 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
       case 'confirmer_cp_garde':
         if (t.contains('oui') || t.contains('quand meme') || t.contains('confirme') || t.contains('enregistre')) {
           setState(() => _etatConv = '');
-          _enregistrerGarde();
+          // Speak avant save : la nav post-save démonte le widget et coupe le TTS.
           await _parler('Congés payés enregistrés !');
-          Future.delayed(const Duration(milliseconds: 2000), () {
-            if (mounted) _reinitialiserFormulaire();
-          });
+          if (!mounted) return;
+          _enregistrerGarde();
         } else if (t.contains('non') || t.contains('annule')) {
           _reinitialiserFormulaire();
           await _parler('D\'accord, enregistrement annulé.');
@@ -2415,8 +2435,25 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
   Garde _buildGarde() {
     final dh = _val(_debutHeureCtrl, 23); final dm = _val(_debutMinCtrl, 59);
     final fh = _val(_finHeureCtrl, 23);   final fm = _val(_finMinCtrl, 59);
-    final debut = DateTime(_date.year, _date.month, _date.day, dh, dm);
-    var fin    = DateTime(_date.year, _date.month, _date.day, fh, fm);
+
+    // Auto-correction de l'année : si le mois choisi est strictement postérieur
+    // au mois courant (ex : on est en mai et l'utilisateur saisit "juin"), le
+    // picker a calé l'année sur l'année courante alors que l'utilisateur
+    // entre une garde passée → on ramène l'année à N-1.
+    // On ne touche pas si la garde est déjà en édition (gardeAModifier) pour
+    // ne pas réécrire silencieusement une date existante.
+    var dateEffective = _date;
+    if (widget.gardeAModifier == null) {
+      final now = DateTime.now();
+      final pickedKey = _date.year * 12 + _date.month;
+      final nowKey = now.year * 12 + now.month;
+      if (pickedKey > nowKey) {
+        dateEffective = DateTime(_date.year - 1, _date.month, _date.day);
+      }
+    }
+
+    final debut = DateTime(dateEffective.year, dateEffective.month, dateEffective.day, dh, dm);
+    var fin    = DateTime(dateEffective.year, dateEffective.month, dateEffective.day, fh, fm);
     if (!_jourNonTravaille && fin.isBefore(debut)) {
       fin = fin.add(const Duration(days: 1));
     }
@@ -2424,7 +2461,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     int nbJoursCP = 0;
     if (_isCongesPaies) {
       if (_cpDateFin != null) {
-        final debut2 = DateTime(_date.year, _date.month, _date.day);
+        final debut2 = DateTime(dateEffective.year, dateEffective.month, dateEffective.day);
         final fin2 = DateTime(_cpDateFin!.year, _cpDateFin!.month, _cpDateFin!.day);
         nbJoursCP = fin2.difference(debut2).inDays + 1;
       } else {
@@ -2433,7 +2470,7 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
     }
     return Garde(
       id: widget.gardeAModifier?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      date: _date,
+      date: dateEffective,
       heureDebut: debut,
       heureFin: _jourNonTravaille || _isCongesPaies ? debut : fin,
       jourNonTravaille: _jourNonTravaille,
@@ -3294,18 +3331,21 @@ class _SaisieGardeScreenState extends State<SaisieGardeScreen> {
                 if (_avecPause)
                   _calcRow('Pause déduite',
                       '- ${Calculs.formatHeures(_pauseMinutes / 60)}', null),
-                _calcRow('Heures de nuit (21h-6h)', Calculs.formatHeures(heuresNuit),
-                    'maj. +${majNuit.toStringAsFixed(2)} €'),
+                _calcRow('Heures de nuit (${Calculs.majorationNuitDebut}h-6h)',
+                    Calculs.formatHeures(heuresNuit),
+                    Calculs.majorationNuitActivee
+                        ? 'maj. +${majNuit.toStringAsFixed(2)} €'
+                        : 'majoration désactivée'),
                 _calcRow(nomFerie != null ? 'Jour férié ($nomFerie)' : 'Dimanche / férié',
                     estFerieOuDim ? 'Oui' : 'Non',
                     estFerieOuDim ? '+${majDim.toStringAsFixed(2)} €' : null),
-                _calcRow('IDAJ (amplitude > 12h)',
-                    garde.hasIDAJ
-                        ? (garde.amplitudeMinutes / 60 > 13
-                            ? '+75% puis +100%'
-                            : '+75% du taux')
-                        : 'Non',
-                    garde.hasIDAJ ? '+${idaj.toStringAsFixed(2)} €' : null),
+                _calcRow('IDAJ (amplitude > ${Calculs.idajSeuilHeures.toStringAsFixed(0)}h)',
+                    !Calculs.idajActivee
+                        ? 'Désactivée'
+                        : (garde.amplitudeMinutes / 60 > Calculs.idajSeuilHeures
+                            ? '+${Calculs.idajPourcentage.toStringAsFixed(0)}% du taux'
+                            : 'Non'),
+                    Calculs.idajActivee && idaj > 0 ? '+${idaj.toStringAsFixed(2)} €' : null),
                 if (_avecPanier)
                   _calcRow('Panier repas', '${_panierRepasGarde.toStringAsFixed(2)} €', null),
                 if (_avecLongueDistance && _primeLongueDistance > 0)

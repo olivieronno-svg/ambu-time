@@ -218,7 +218,7 @@ class PdfService {
                       indDimanche: dimanche, montantIdaj: idaj);
               final rowColor = g.jourNonTravaille ? _coral.flatten()
                   : g.isDimancheOuFerie ? _amber.flatten()
-                  : g.heuresNuitMinutes > 0 ? _bleu.flatten()
+                  : Calculs.heuresNuitMinutes(g) > 0 ? _bleu.flatten()
                   : _blanc;
               final infos = <String>[];
               if (g.jourNonTravaille) infos.add('Non travaille');

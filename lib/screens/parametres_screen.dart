@@ -32,8 +32,17 @@ class ParametresScreen extends StatefulWidget {
   final int modeCp;
   final double brutPeriodeRef;
   final String poste;
+  final bool majorationNuitActivee;
+  final double majorationNuitPourcentage;
+  final int majorationNuitDebut;
+  final bool idajActivee;
+  final double idajPourcentage;
+  final double idajSeuilHeures;
+  final double idajTier2Pourcentage;
+  final double idajTier2Seuil;
   final Function(double, double, double, double, DateTime?,
-      List<PrimeMensuelle>, double, double, String, double, int, double) onParametresModifies;
+      List<PrimeMensuelle>, double, double, String, double, int, double, bool,
+      double, int, bool, double, double, double, double) onParametresModifies;
   final Future<void> Function()? onSignInSuccess;
   final bool isPro;
   final Future<void> Function()? onPurchaseSuccess;
@@ -55,6 +64,14 @@ class ParametresScreen extends StatefulWidget {
     this.modeCp = 0,
     this.brutPeriodeRef = 0,
     required this.poste,
+    this.majorationNuitActivee = true,
+    this.majorationNuitPourcentage = 25,
+    this.majorationNuitDebut = 21,
+    this.idajActivee = true,
+    this.idajPourcentage = 100,
+    this.idajSeuilHeures = 12,
+    this.idajTier2Pourcentage = 100,
+    this.idajTier2Seuil = 12,
     this.debutQuatorzaine,
     this.onSignInSuccess,
     this.isPro = false,
@@ -74,9 +91,17 @@ class _ParametresScreenState extends State<ParametresScreen> {
   late TextEditingController _kmCtrl;
   late TextEditingController _congesCtrl;
   late TextEditingController _brutPeriodeRefCtrl;
+  late TextEditingController _majNuitPctCtrl;
+  late TextEditingController _majNuitDebutCtrl;
+  late TextEditingController _idajPctCtrl;
+  late TextEditingController _idajSeuilCtrl;
+  late TextEditingController _idajTier2PctCtrl;
+  late TextEditingController _idajTier2SeuilCtrl;
   late int _modeCp;
   late List<PrimeMensuelle> _primes;
   late String _poste;
+  late bool _majorationNuitActivee;
+  late bool _idajActivee;
   DateTime? _debutQuatorzaine;
 
   @override
@@ -93,9 +118,21 @@ class _ParametresScreenState extends State<ParametresScreen> {
         ? widget.congesAcquisAvant.toStringAsFixed(1) : '');
     _brutPeriodeRefCtrl = TextEditingController(text: widget.brutPeriodeRef > 0
         ? widget.brutPeriodeRef.toStringAsFixed(2) : '');
+    _majNuitPctCtrl = TextEditingController(text: widget.majorationNuitPourcentage.toStringAsFixed(0));
+    _majNuitDebutCtrl = TextEditingController(text: widget.majorationNuitDebut.toString());
+    _idajPctCtrl = TextEditingController(text: widget.idajPourcentage.toStringAsFixed(0));
+    _idajSeuilCtrl = TextEditingController(text: widget.idajSeuilHeures.toStringAsFixed(0));
+    _idajTier2PctCtrl = TextEditingController(text: widget.idajTier2Pourcentage.toStringAsFixed(0));
+    _idajTier2SeuilCtrl = TextEditingController(text: widget.idajTier2Seuil.toStringAsFixed(0));
+    // Re-render quand les seuils IDAJ changent pour afficher/cacher l'avertissement
+    // "tranche 2 ignorée si seuil 2 ≤ seuil 1".
+    _idajSeuilCtrl.addListener(_onIdajSeuilChanged);
+    _idajTier2SeuilCtrl.addListener(_onIdajSeuilChanged);
     _modeCp = widget.modeCp;
     _primes = List.from(widget.primes);
     _poste = widget.poste;
+    _majorationNuitActivee = widget.majorationNuitActivee;
+    _idajActivee = widget.idajActivee;
     _debutQuatorzaine = widget.debutQuatorzaine;
   }
 
@@ -104,7 +141,21 @@ class _ParametresScreenState extends State<ParametresScreen> {
     _tauxCtrl.dispose(); _panierCtrl.dispose(); _dimancheCtrl.dispose();
     _idajCtrl.dispose(); _impotCtrl.dispose(); _kmCtrl.dispose(); _congesCtrl.dispose();
     _brutPeriodeRefCtrl.dispose();
+    _majNuitPctCtrl.dispose(); _majNuitDebutCtrl.dispose();
+    _idajPctCtrl.dispose(); _idajSeuilCtrl.dispose();
+    _idajTier2PctCtrl.dispose(); _idajTier2SeuilCtrl.dispose();
     super.dispose();
+  }
+
+  void _onIdajSeuilChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _idajTier2Ignoree {
+    final s1 = double.tryParse(_idajSeuilCtrl.text.replaceAll(',', '.'));
+    final s2 = double.tryParse(_idajTier2SeuilCtrl.text.replaceAll(',', '.'));
+    if (s1 == null || s2 == null) return false;
+    return s2 <= s1;
   }
 
   Future<void> _ouvrirLienExterne(String url) async {
@@ -201,6 +252,20 @@ class _ParametresScreenState extends State<ParametresScreen> {
       double.tryParse(c.text.replaceAll(',', '.')) ?? fallback;
 
   void _sauvegarder() {
+    final majNuitPct = _parse(_majNuitPctCtrl, widget.majorationNuitPourcentage)
+        .clamp(0, 200).toDouble();
+    // Clamp 6-23 : valeurs < 6 produisent une fenêtre nuit dégénérée (toute la
+    // journée) puisque la nuit "naturelle" inclut [00h, 06h[.
+    final majNuitDebut = (int.tryParse(_majNuitDebutCtrl.text) ?? widget.majorationNuitDebut)
+        .clamp(6, 23);
+    final idajPct = _parse(_idajPctCtrl, widget.idajPourcentage)
+        .clamp(0, 500).toDouble();
+    final idajSeuil = _parse(_idajSeuilCtrl, widget.idajSeuilHeures)
+        .clamp(0, 24).toDouble();
+    final idajTier2Pct = _parse(_idajTier2PctCtrl, widget.idajTier2Pourcentage)
+        .clamp(0, 500).toDouble();
+    final idajTier2Seuil = _parse(_idajTier2SeuilCtrl, widget.idajTier2Seuil)
+        .clamp(0, 24).toDouble();
     widget.onParametresModifies(
       _parse(_tauxCtrl, widget.tauxHoraire),
       _parse(_panierCtrl, widget.panierRepas),
@@ -213,6 +278,14 @@ class _ParametresScreenState extends State<ParametresScreen> {
       _parse(_congesCtrl, 0),
       _modeCp,
       _parse(_brutPeriodeRefCtrl, 0),
+      _majorationNuitActivee,
+      majNuitPct,
+      majNuitDebut,
+      _idajActivee,
+      idajPct,
+      idajSeuil,
+      idajTier2Pct,
+      idajTier2Seuil,
     );
     ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Paramètres sauvegardés !')));
@@ -898,14 +971,130 @@ class _ParametresScreenState extends State<ParametresScreen> {
             ),
 
             // ── Prime annuelle calculée ────────────────────────────
-            // ── Majorations CCN ────────────────────────────────────
-            _sectionTitle('Majorations CCN (auto)'),
+            // ── Majoration de nuit ─────────────────────────────────
+            _sectionTitle('Majoration de nuit'),
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: AppTheme.cardDecoration(),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Activer la majoration de nuit',
+                        style: TextStyle(fontSize: 12,
+                            fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+                    Text(_majorationNuitActivee
+                            ? 'Heures de nuit majorées'
+                            : 'Désactivée — heures de nuit payées au taux normal',
+                        style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                  ])),
+                  Switch(
+                    value: _majorationNuitActivee,
+                    onChanged: (v) => setState(() => _majorationNuitActivee = v),
+                  ),
+                ]),
+                if (_majorationNuitActivee) ...[
+                  const SizedBox(height: 8),
+                  Divider(color: AppTheme.bgCardBorder),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: _miniField(
+                      'Pourcentage', 'Ex : 25', _majNuitPctCtrl, '%')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _miniField(
+                      'À partir de (6–23)', 'Ex : 21', _majNuitDebutCtrl, 'h',
+                      isInt: true)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text('Fenêtre nocturne : ${widget.majorationNuitDebut}h → 6h (fin fixée à 6h)',
+                      style: TextStyle(fontSize: 10, color: AppTheme.textTertiary)),
+                ],
+              ]),
+            ),
+
+            // ── IDAJ ────────────────────────────────────────────────
+            _sectionTitle('IDAJ — Dépassement amplitude'),
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: AppTheme.cardDecoration(),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Activer l\'IDAJ',
+                        style: TextStyle(fontSize: 12,
+                            fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+                    Text(_idajActivee
+                            ? 'Indemnité au-delà du seuil d\'amplitude'
+                            : 'Désactivée — pas d\'indemnité de dépassement',
+                        style: TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+                  ])),
+                  Switch(
+                    value: _idajActivee,
+                    onChanged: (v) => setState(() => _idajActivee = v),
+                  ),
+                ]),
+                if (_idajActivee) ...[
+                  const SizedBox(height: 8),
+                  Divider(color: AppTheme.bgCardBorder),
+                  const SizedBox(height: 8),
+                  Text('1ʳᵉ tranche',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary)),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Expanded(child: _miniField(
+                      'Pourcentage', 'Ex : 100', _idajPctCtrl, '%')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _miniField(
+                      'À partir de', 'Ex : 12', _idajSeuilCtrl, 'h')),
+                  ]),
+                  const SizedBox(height: 12),
+                  Text('2ᵉ tranche',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary)),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Expanded(child: _miniField(
+                      'Pourcentage', 'Ex : 100', _idajTier2PctCtrl, '%')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _miniField(
+                      'À partir de', 'Ex : 13', _idajTier2SeuilCtrl, 'h')),
+                  ]),
+                  const SizedBox(height: 6),
+                  if (_idajTier2Ignoree)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.colorRed.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppTheme.colorRed.withValues(alpha: 0.4)),
+                      ),
+                      child: Row(children: [
+                        Icon(Icons.warning_amber_rounded, size: 14, color: AppTheme.colorRed),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text(
+                          '2ᵉ tranche ignorée — son seuil doit être supérieur à celui de la 1ʳᵉ.',
+                          style: TextStyle(fontSize: 10, color: AppTheme.colorRed,
+                              fontWeight: FontWeight.w500),
+                        )),
+                      ]),
+                    )
+                  else
+                    Text('La 2ᵉ tranche ne s\'applique que si son seuil est supérieur '
+                        'à celui de la 1ʳᵉ.',
+                        style: TextStyle(fontSize: 10, color: AppTheme.textTertiary)),
+                ],
+              ]),
+            ),
+
+            // ── Autres majorations CCN (info) ──────────────────────
+            _sectionTitle('Autres majorations CCN'),
             Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(14),
               decoration: AppTheme.cardDecoration(),
               child: Column(children: [
-                _infoRow('Heures de nuit (21h–6h)', '+25%'),
                 _infoRow('Heures supp. (78h → 86h)', '+25%'),
                 _infoRow('Heures supp. (au-delà 86h)', '+50%'),
                 _infoRow('Dimanche / jour férié', '+25% + forfait'),
@@ -921,9 +1110,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 _infoRow('Conv. Coll.', 'CCN Transports sanitaires'),
                 _infoRow('Réf. quatorzaine', '78h'),
-                _infoRow('Seuil IDAJ', 'Amplitude > 12h'),
-                _infoRow('IDAJ 12h-13h', '+75% taux horaire'),
-                _infoRow('IDAJ > 13h', '+100% taux horaire'),
                 const SizedBox(height: 10),
                 Divider(color: AppTheme.bgCardBorder),
                 const SizedBox(height: 10),
@@ -1119,6 +1305,28 @@ class _ParametresScreenState extends State<ParametresScreen> {
         ),
       );
     }).toList());
+  }
+
+  Widget _miniField(String label, String hint, TextEditingController ctrl,
+      String suffix, {bool isInt = false}) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+      const SizedBox(height: 4),
+      TextField(
+        controller: ctrl,
+        keyboardType: isInt
+            ? const TextInputType.numberWithOptions(decimal: false)
+            : const TextInputType.numberWithOptions(decimal: true),
+        style: TextStyle(color: AppTheme.textPrimary),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
+          suffixText: suffix,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        ),
+      ),
+    ]);
   }
 
   Widget _paramField(String label, String hint, TextEditingController ctrl, String suffix) {

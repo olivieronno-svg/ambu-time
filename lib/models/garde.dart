@@ -158,26 +158,6 @@ class Garde {
     return null;
   }
 
-  int get heuresNuitMinutes {
-    if (jourNonTravaille) return 0;
-    int total = 0;
-    // Itère par jour calendaire (O(jours) au lieu de O(minutes))
-    DateTime day = DateTime(heureDebut.year, heureDebut.month, heureDebut.day);
-    final lastDay = DateTime(heureFin.year, heureFin.month, heureFin.day);
-    while (!day.isAfter(lastDay)) {
-      for (final interval in [
-        [day, day.add(const Duration(hours: 6))],               // 00h–06h
-        [day.add(const Duration(hours: 21)), day.add(const Duration(hours: 24))], // 21h–24h
-      ]) {
-        final s = heureDebut.isAfter(interval[0]) ? heureDebut : interval[0];
-        final e = heureFin.isBefore(interval[1]) ? heureFin : interval[1];
-        if (e.isAfter(s)) total += e.difference(s).inMinutes;
-      }
-      day = day.add(const Duration(days: 1));
-    }
-    return total.clamp(0, dureeMinutes);
-  }
-
   Map<String, dynamic> toMap() => {
     'id': id,
     'date': date.toIso8601String(),

@@ -25,6 +25,14 @@ class Storage {
   static const _modeCpKey = 'mode_calcul_cp';
   static const _brutPeriodeRefKey = 'brut_periode_ref';
   static const _primeAnnuelleActiveeKey = 'prime_annuelle_activee';
+  static const _majorationNuitActiveeKey = 'majoration_nuit_activee';
+  static const _majorationNuitPctKey = 'majoration_nuit_pourcentage';
+  static const _majorationNuitDebutKey = 'majoration_nuit_debut';
+  static const _idajActiveeKey = 'idaj_activee';
+  static const _idajPctKey = 'idaj_pourcentage';
+  static const _idajSeuilKey = 'idaj_seuil_heures';
+  static const _idajTier2PctKey = 'idaj_tier2_pourcentage';
+  static const _idajTier2SeuilKey = 'idaj_tier2_seuil';
 
   static Future<void> sauvegarderGardes(List<Garde> gardes) async {
     final prefs = await SharedPreferences.getInstance();
@@ -52,6 +60,14 @@ class Storage {
     int modeCp = 0, // 0=auto, 1=dixième, 2=maintien
     double brutPeriodeRef = 0,
     bool primeAnnuelleActivee = true,
+    bool majorationNuitActivee = true,
+    double majorationNuitPourcentage = 25,
+    int majorationNuitDebut = 21,
+    bool idajActivee = true,
+    double idajPourcentage = 100,
+    double idajSeuilHeures = 12,
+    double idajTier2Pourcentage = 100,
+    double idajTier2Seuil = 12,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_tauxKey, taux);
@@ -65,6 +81,14 @@ class Storage {
     await prefs.setInt(_modeCpKey, modeCp);
     await prefs.setDouble(_brutPeriodeRefKey, brutPeriodeRef);
     await prefs.setBool(_primeAnnuelleActiveeKey, primeAnnuelleActivee);
+    await prefs.setBool(_majorationNuitActiveeKey, majorationNuitActivee);
+    await prefs.setDouble(_majorationNuitPctKey, majorationNuitPourcentage);
+    await prefs.setInt(_majorationNuitDebutKey, majorationNuitDebut);
+    await prefs.setBool(_idajActiveeKey, idajActivee);
+    await prefs.setDouble(_idajPctKey, idajPourcentage);
+    await prefs.setDouble(_idajSeuilKey, idajSeuilHeures);
+    await prefs.setDouble(_idajTier2PctKey, idajTier2Pourcentage);
+    await prefs.setDouble(_idajTier2SeuilKey, idajTier2Seuil);
     await prefs.setStringList(
         _primesKey, primes.map((p) => jsonEncode(p.toMap())).toList());
     if (debutQuatorzaine != null) {
@@ -111,6 +135,14 @@ class Storage {
       'modeCp': prefs.getInt(_modeCpKey) ?? 0,
       'brutPeriodeRef': prefs.getDouble(_brutPeriodeRefKey) ?? 0.0,
       'primeAnnuelleActivee': prefs.getBool(_primeAnnuelleActiveeKey) ?? true,
+      'majorationNuitActivee': prefs.getBool(_majorationNuitActiveeKey) ?? true,
+      'majorationNuitPourcentage': prefs.getDouble(_majorationNuitPctKey) ?? 25.0,
+      'majorationNuitDebut': prefs.getInt(_majorationNuitDebutKey) ?? 21,
+      'idajActivee': prefs.getBool(_idajActiveeKey) ?? true,
+      'idajPourcentage': prefs.getDouble(_idajPctKey) ?? 100.0,
+      'idajSeuilHeures': prefs.getDouble(_idajSeuilKey) ?? 12.0,
+      'idajTier2Pourcentage': prefs.getDouble(_idajTier2PctKey) ?? 100.0,
+      'idajTier2Seuil': prefs.getDouble(_idajTier2SeuilKey) ?? 12.0,
     };
   }
 
@@ -149,6 +181,14 @@ class Storage {
         'modeCp': params['modeCp'],
         'brutPeriodeRef': params['brutPeriodeRef'],
         'primeAnnuelleActivee': params['primeAnnuelleActivee'],
+        'majorationNuitActivee': params['majorationNuitActivee'],
+        'majorationNuitPourcentage': params['majorationNuitPourcentage'],
+        'majorationNuitDebut': params['majorationNuitDebut'],
+        'idajActivee': params['idajActivee'],
+        'idajPourcentage': params['idajPourcentage'],
+        'idajSeuilHeures': params['idajSeuilHeures'],
+        'idajTier2Pourcentage': params['idajTier2Pourcentage'],
+        'idajTier2Seuil': params['idajTier2Seuil'],
       },
     };
     final json = const JsonEncoder.withIndent('  ').convert(data);
@@ -190,6 +230,14 @@ class Storage {
       if (p['modeCp'] != null) await prefs.setInt(_modeCpKey, p['modeCp'] as int);
       if (p['brutPeriodeRef'] != null) await prefs.setDouble(_brutPeriodeRefKey, (p['brutPeriodeRef'] as num).toDouble());
       if (p['primeAnnuelleActivee'] != null) await prefs.setBool(_primeAnnuelleActiveeKey, p['primeAnnuelleActivee'] as bool);
+      if (p['majorationNuitActivee'] != null) await prefs.setBool(_majorationNuitActiveeKey, p['majorationNuitActivee'] as bool);
+      if (p['majorationNuitPourcentage'] != null) await prefs.setDouble(_majorationNuitPctKey, (p['majorationNuitPourcentage'] as num).toDouble());
+      if (p['majorationNuitDebut'] != null) await prefs.setInt(_majorationNuitDebutKey, (p['majorationNuitDebut'] as num).toInt());
+      if (p['idajActivee'] != null) await prefs.setBool(_idajActiveeKey, p['idajActivee'] as bool);
+      if (p['idajPourcentage'] != null) await prefs.setDouble(_idajPctKey, (p['idajPourcentage'] as num).toDouble());
+      if (p['idajSeuilHeures'] != null) await prefs.setDouble(_idajSeuilKey, (p['idajSeuilHeures'] as num).toDouble());
+      if (p['idajTier2Pourcentage'] != null) await prefs.setDouble(_idajTier2PctKey, (p['idajTier2Pourcentage'] as num).toDouble());
+      if (p['idajTier2Seuil'] != null) await prefs.setDouble(_idajTier2SeuilKey, (p['idajTier2Seuil'] as num).toDouble());
       if (p['debutQuatorzaine'] != null) await prefs.setString(_quatorzaineKey, p['debutQuatorzaine'] as String);
       if (p['primes'] != null) {
         final primesRaw = p['primes'] as List<dynamic>;
@@ -221,6 +269,14 @@ class Storage {
     await prefs.remove(_modeCpKey);
     await prefs.remove(_brutPeriodeRefKey);
     await prefs.remove(_primeAnnuelleActiveeKey);
+    await prefs.remove(_majorationNuitActiveeKey);
+    await prefs.remove(_majorationNuitPctKey);
+    await prefs.remove(_majorationNuitDebutKey);
+    await prefs.remove(_idajActiveeKey);
+    await prefs.remove(_idajPctKey);
+    await prefs.remove(_idajSeuilKey);
+    await prefs.remove(_idajTier2PctKey);
+    await prefs.remove(_idajTier2SeuilKey);
     await prefs.remove(_rappelCollegueKey);
     await prefs.remove(_rappelDistanceKey);
     await prefs.remove(_testerProKey);

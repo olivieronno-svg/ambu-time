@@ -134,6 +134,10 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   DateTime? _debutQuatorzaine;
   bool _chargement = true;
   bool _isPro = false;
+  // iOS : pas d'IAP (compte Apple Individual). Pour éviter les locks visuels
+  // sans possibilité d'achat, toutes les features Pro sont débloquées sur iOS.
+  // Les pubs continuent de s'afficher (revenu principal côté iOS).
+  bool get _proFeaturesUnlocked => _isPro || Platform.isIOS;
   int? _compteurNavigation = 0;
   Garde? _gardeAModifier;
   final List<Garde> _gardes = [];
@@ -148,28 +152,39 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     super.initState();
     _chargerDonnees();
     _chargerStatutPro();
-    AdService.initialiser();
+    // Init UMP (consentement RGPD + ATT iOS) puis MobileAds, ensuite seulement
+    // on precharge l'interstitielle si le user n'est pas Pro. Differe au premier
+    // frame : le formulaire UMP a besoin que l'Activity soit resumee.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AdService.initialiser().then((_) {
+        if (mounted && !_isPro) AdService.chargerInterstitielle();
+      });
+    });
     _dernierUid = FirebaseAuth.instance.currentUser?.uid;
     _authSub = FirebaseAuth.instance.authStateChanges().listen(_onAuthChange);
 
     // RevenueCat notifie l'app a chaque changement d'abonnement (achat,
     // expiration, restauration). Source unique de verite pour _isPro.
-    _customerInfoListener = (info) {
-      if (!mounted) return;
-      final pro = info.entitlements.active.containsKey(PurchaseService.entitlementId);
-      if (pro != _isPro) {
-        setState(() {
-          _isPro = pro;
-          if (pro) _compteurNavigation = 0;
-        });
-        if (_isPro) {
-          AdService.disposerInterstitielle();
-        } else {
-          AdService.chargerInterstitielle();
+    // iOS : RevenueCat n'est pas initialise (compte Individual sans Paid Apps
+    // Agreement), donc pas de listener.
+    if (!Platform.isIOS) {
+      _customerInfoListener = (info) {
+        if (!mounted) return;
+        final pro = info.entitlements.active.containsKey(PurchaseService.entitlementId);
+        if (pro != _isPro) {
+          setState(() {
+            _isPro = pro;
+            if (pro) _compteurNavigation = 0;
+          });
+          if (_isPro) {
+            AdService.disposerInterstitielle();
+          } else {
+            AdService.chargerInterstitielle();
+          }
         }
-      }
-    };
-    Purchases.addCustomerInfoUpdateListener(_customerInfoListener!);
+      };
+      Purchases.addCustomerInfoUpdateListener(_customerInfoListener!);
+    }
   }
 
   @override
@@ -775,7 +790,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         brutPeriodeRef: _brutPeriodeRef,
         onModifierGarde: _ouvrirModification,
         onSupprimerGarde: _supprimerGarde,
-        isPro: _isPro,
+        isPro: _proFeaturesUnlocked,
       ),
       ParametresScreen(
         tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,
@@ -796,7 +811,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         idajTier2Pourcentage: _idajTier2Pourcentage,
         idajTier2Seuil: _idajTier2Seuil,
         onSignInSuccess: _onSignInSuccess,
-        isPro: _isPro,
+        isPro: _proFeaturesUnlocked,
         onPurchaseSuccess: _onAchatProSucces,
       ),
       ImpotsScreen(
@@ -805,9 +820,9 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         impotSource: _impotSource, primes: _primes,
         primeAnnuelle: _primeAnnuelleEffective,
         kmDomicileTravail: _kmDomicileTravail,
-        isPro: _isPro,
+        isPro: _proFeaturesUnlocked,
       ),
-      InfoScreen(isPro: _isPro),
+      InfoScreen(isPro: _proFeaturesUnlocked),
     ];
 
     return Scaffold(

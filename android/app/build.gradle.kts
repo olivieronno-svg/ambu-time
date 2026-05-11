@@ -32,6 +32,8 @@ android {
 
     defaultConfig {
         applicationId = "com.onnoff.ambutime"
+        // minSdk override possible via android/local.properties → flutter.minSdkVersion=21
+        // (Flutter 3.41+ default = 24, override sert a maintenir support Android 5/6 comme 1.0.21+36 live)
         minSdk = flutter.minSdkVersion
         targetSdk = 36
         versionCode = flutter.versionCode

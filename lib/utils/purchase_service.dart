@@ -18,7 +18,14 @@ class PurchaseService {
   static String get apiKey => Platform.isIOS ? _iosKey : _androidKey;
   static const String entitlementId = 'Onn-Off Pro';
 
+  // IAP désactivé sur iOS : compte Apple Individual sans Paid Apps Agreement signé.
+  // Tant que la conversion Organization (DUNS) n'est pas faite, RevenueCat
+  // retournerait 0 offering → review Apple en échec. L'app reste gratuite +
+  // pubs côté iOS, et toutes les fonctionnalités Pro sont débloquées par main.dart.
+  static bool get _iapDisponible => !Platform.isIOS;
+
   static Future<void> initialiser() async {
+    if (!_iapDisponible) return;
     try {
       await Purchases.setLogLevel(LogLevel.debug);
       final config = PurchasesConfiguration(apiKey);
@@ -29,6 +36,7 @@ class PurchaseService {
   }
 
   static Future<bool> isPro() async {
+    if (!_iapDisponible) return false;
     try {
       final info = await Purchases.getCustomerInfo();
       return info.entitlements.active.containsKey(entitlementId);
@@ -38,6 +46,7 @@ class PurchaseService {
   }
 
   static Future<AchatResult> acheterPro() async {
+    if (!_iapDisponible) return AchatResult.offerIndisponible;
     try {
       final offerings = await Purchases.getOfferings();
       if (offerings.current == null ||
@@ -78,6 +87,7 @@ class PurchaseService {
   }
 
   static Future<bool> restaurerAchats() async {
+    if (!_iapDisponible) return false;
     try {
       final info = await Purchases.restorePurchases();
       return info.entitlements.active.containsKey(entitlementId);

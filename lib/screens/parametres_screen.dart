@@ -172,12 +172,12 @@ class _ParametresScreenState extends State<ParametresScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer le compte ?'),
-        content: const Text(
+        content: Text(
           'Cette action est irréversible. Elle va :\n\n'
           '• Supprimer définitivement ton compte Ambu Time\n'
           '• Effacer toutes tes données synchronisées (gardes, paramètres)\n'
-          '• Effacer les données stockées sur cet appareil\n\n'
-          'Les achats Pro restent liés à ton compte Google Play et peuvent être restaurés.',
+          '• Effacer les données stockées sur cet appareil'
+          '${Platform.isIOS ? '' : '\n\nLes achats Pro restent liés à ton compte Google Play et peuvent être restaurés.'}',
         ),
         actions: [
           TextButton(
@@ -601,30 +601,16 @@ class _ParametresScreenState extends State<ParametresScreen> {
                         style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                       ),
                       const SizedBox(height: 12),
-                      SizedBox(width: double.infinity, child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final messenger = ScaffoldMessenger.of(context);
-                          try {
-                            final cred = await AuthService.signInWithGoogle();
-                            if (cred != null) await widget.onSignInSuccess?.call();
-                          } catch (e) {
-                            messenger.showSnackBar(SnackBar(
-                              content: Text('Erreur Google : $e'),
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 8),
-                            ));
-                          }
-                        },
-                        icon: const Icon(Icons.login, size: 18),
-                        label: const Text('Continuer avec Google'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.colorBlue,
-                          side: BorderSide(color: AppTheme.colorBlue),
-                          padding: const EdgeInsets.symmetric(vertical: 11),
+                      SizedBox(
+                        width: double.infinity,
+                        child: _EmailAuthForm(
+                          onSuccess: () async {
+                            await widget.onSignInSuccess?.call();
+                          },
                         ),
-                      )),
+                      ),
                       if (!kIsWeb && Platform.isIOS) ...[
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 12),
                         SizedBox(width: double.infinity, child: ElevatedButton.icon(
                           onPressed: () async {
                             final messenger = ScaffoldMessenger.of(context);
@@ -716,6 +702,9 @@ class _ParametresScreenState extends State<ParametresScreen> {
             ),
 
             // ── Version Pro ────────────────────────────────────────
+            // Masquee sur iOS : pas d'IAP (compte Apple Individual). Toutes les
+            // features Pro sont deja debloquees gratuitement cote iOS via main.dart.
+            if (!Platform.isIOS) ...[
             _sectionTitle('Version Pro'),
             Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -818,6 +807,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
                 ],
               ]),
             ),
+            ],
 
             // ── Quatorzaine ────────────────────────────────────────
             _sectionTitle('Quatorzaine'),
@@ -1365,4 +1355,167 @@ class _ParametresScreenState extends State<ParametresScreen> {
       Expanded(child: Text(label, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary))),
     ]),
   );
+}
+
+class _EmailAuthForm extends StatefulWidget {
+  final Future<void> Function() onSuccess;
+  const _EmailAuthForm({required this.onSuccess});
+
+  @override
+  State<_EmailAuthForm> createState() => _EmailAuthFormState();
+}
+
+class _EmailAuthFormState extends State<_EmailAuthForm> {
+  static final _emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _signupMode = false;
+  bool _showPassword = false;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  String _humanError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email': return 'Adresse email invalide';
+      case 'user-disabled': return 'Compte désactivé';
+      case 'user-not-found': return 'Aucun compte avec cet email. Crée un compte d\'abord.';
+      case 'wrong-password':
+      case 'invalid-credential': return 'Email ou mot de passe incorrect';
+      case 'email-already-in-use': return 'Un compte existe déjà avec cet email. Connecte-toi à la place.';
+      case 'weak-password': return 'Mot de passe trop faible (min. 6 caractères)';
+      case 'too-many-requests': return 'Trop de tentatives, réessaie dans quelques minutes';
+      case 'network-request-failed': return 'Pas de connexion internet';
+      default: return 'Erreur : ${e.message ?? e.code}';
+    }
+  }
+
+  Future<void> _submit() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    if (!_emailRegex.hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Email invalide'), backgroundColor: Colors.red));
+      return;
+    }
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mot de passe : 6 caractères minimum'), backgroundColor: Colors.red));
+      return;
+    }
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      if (_signupMode) {
+        await AuthService.signUpWithEmail(email, password);
+      } else {
+        await AuthService.signInWithEmail(email, password);
+      }
+      await widget.onSuccess();
+    } on FirebaseAuthException catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(_humanError(e)),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 6),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Erreur : $e'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 6),
+      ));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final email = _emailController.text.trim();
+    if (!_emailRegex.hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saisis un email valide')));
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await AuthService.sendPasswordReset(email);
+      messenger.showSnackBar(SnackBar(
+        content: Text('Email de réinitialisation envoyé à $email'),
+        backgroundColor: AppTheme.colorGreen,
+      ));
+    } on FirebaseAuthException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(_humanError(e)), backgroundColor: Colors.red));
+    }
+  }
+
+  InputDecoration _input(String label, IconData icon) => InputDecoration(
+    labelText: label,
+    prefixIcon: Icon(icon, size: 18),
+    isDense: true,
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      TextField(
+        controller: _emailController,
+        keyboardType: TextInputType.emailAddress,
+        autocorrect: false,
+        textInputAction: TextInputAction.next,
+        decoration: _input('Adresse email', Icons.alternate_email),
+      ),
+      const SizedBox(height: 8),
+      TextField(
+        controller: _passwordController,
+        obscureText: !_showPassword,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _busy ? null : _submit(),
+        decoration: _input('Mot de passe', Icons.lock_outline).copyWith(
+          suffixIcon: IconButton(
+            icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility, size: 18),
+            onPressed: () => setState(() => _showPassword = !_showPassword),
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      ElevatedButton(
+        onPressed: _busy ? null : _submit,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.colorBlue,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 11),
+        ),
+        child: _busy
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(
+                strokeWidth: 2, color: Colors.white))
+            : Text(_signupMode ? 'Créer un compte' : 'Se connecter'),
+      ),
+      const SizedBox(height: 6),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        TextButton(
+          onPressed: _busy ? null : () => setState(() => _signupMode = !_signupMode),
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+          child: Text(
+            _signupMode ? 'J\'ai déjà un compte' : 'Créer un compte',
+            style: TextStyle(fontSize: 12, color: AppTheme.colorBlue),
+          ),
+        ),
+        if (!_signupMode)
+          TextButton(
+            onPressed: _busy ? null : _resetPassword,
+            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+            child: Text('Mot de passe oublié',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+          ),
+      ]),
+    ]);
+  }
 }

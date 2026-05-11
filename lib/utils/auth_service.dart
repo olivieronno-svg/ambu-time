@@ -3,29 +3,13 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class AuthService {
   static final _auth = FirebaseAuth.instance;
-  static final _googleSignIn = GoogleSignIn(
-    serverClientId: '944165086970-j655rd9vhb7oo8hsraba0sjjfign4244.apps.googleusercontent.com',
-  );
 
   static Stream<User?> get authStateChanges => _auth.authStateChanges();
   static User? get currentUser => _auth.currentUser;
-
-  static Future<UserCredential?> signInWithGoogle() async {
-    final googleUser = await _googleSignIn.signIn();
-    if (googleUser == null) return null;
-    final googleAuth = await googleUser.authentication;
-    debugPrint('Google Sign-In: idToken null? ${googleAuth.idToken == null}');
-    final credential = GoogleAuthProvider.credential(
-      accessToken: googleAuth.accessToken,
-      idToken: googleAuth.idToken,
-    );
-    return await _auth.signInWithCredential(credential);
-  }
 
   static Future<UserCredential?> signInWithApple() async {
     final rawNonce = _generateNonce();
@@ -53,8 +37,25 @@ class AuthService {
     return await _auth.signInWithCredential(oauthCredential);
   }
 
+  static Future<UserCredential> signInWithEmail(String email, String password) async {
+    return await _auth.signInWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+  }
+
+  static Future<UserCredential> signUpWithEmail(String email, String password) async {
+    return await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+  }
+
+  static Future<void> sendPasswordReset(String email) async {
+    await _auth.sendPasswordResetEmail(email: email.trim());
+  }
+
   static Future<void> signOut() async {
-    await _googleSignIn.signOut();
     await _auth.signOut();
   }
 
@@ -68,7 +69,6 @@ class AuthService {
     if (user == null) return false;
     try {
       await user.delete();
-      try { await _googleSignIn.signOut(); } catch (_) {}
       return true;
     } on FirebaseAuthException catch (e) {
       if (e.code == 'requires-recent-login') return 'reauth';

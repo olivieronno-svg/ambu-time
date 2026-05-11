@@ -1,25 +1,15 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AdService {
-  static const String _banniereAndroid = 'ca-app-pub-4157370209136747/2635157411';
   static const String _interstitielleAndroid = 'ca-app-pub-4157370209136747/6427062765';
-  static const String _banniereIos = 'ca-app-pub-4157370209136747/6427110493';
   static const String _interstitielleIos = 'ca-app-pub-4157370209136747/1601639700';
 
-  static const String _banniereTestAndroid = 'ca-app-pub-3940256099942544/6300978111';
   static const String _interstitielleTestAndroid = 'ca-app-pub-3940256099942544/1033173712';
-  static const String _banniereTestIos = 'ca-app-pub-3940256099942544/2934735716';
   static const String _interstitielleTestIos = 'ca-app-pub-3940256099942544/4411468910';
 
   static final bool _enProduction = const bool.fromEnvironment('dart.vm.product');
-
-  static String get banniereAdUnitId {
-    if (_enProduction) {
-      return Platform.isIOS ? _banniereIos : _banniereAndroid;
-    }
-    return Platform.isIOS ? _banniereTestIos : _banniereTestAndroid;
-  }
 
   static String get interstitielleAdUnitId {
     if (_enProduction) {
@@ -28,22 +18,29 @@ class AdService {
     return Platform.isIOS ? _interstitielleTestIos : _interstitielleTestAndroid;
   }
 
-  static Future<void> initialiser() async {
-    await MobileAds.instance.initialize();
-  }
+  static bool _mobileAdsInitialise = false;
 
-  static BannerAd creerBanniere({required void Function(Ad) onLoaded}) {
-    return BannerAd(
-      adUnitId: banniereAdUnitId,
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: onLoaded,
-        onAdFailedToLoad: (ad, error) {
-          ad.dispose();
-        },
-      ),
+  // RGPD (UMP) + ATT iOS. Sans message publie cote console AdMob (Privacy &
+  // messaging → European regulations + IDFA message), l'appel ne fait rien.
+  // canRequestAds devient true si l'utilisateur a consenti OU s'il est hors UE.
+  static Future<void> initialiser() async {
+    final completer = Completer<void>();
+    ConsentInformation.instance.requestConsentInfoUpdate(
+      ConsentRequestParameters(),
+      () {
+        ConsentForm.loadAndShowConsentFormIfRequired((_) {
+          if (!completer.isCompleted) completer.complete();
+        });
+      },
+      (error) {
+        if (!completer.isCompleted) completer.complete();
+      },
     );
+    await completer.future;
+    if (await ConsentInformation.instance.canRequestAds()) {
+      await MobileAds.instance.initialize();
+      _mobileAdsInitialise = true;
+    }
   }
 
   static InterstitialAd? _interstitielle;
@@ -51,6 +48,7 @@ class AdService {
   static bool _chargementEnCours = false;
 
   static void chargerInterstitielle() {
+    if (!_mobileAdsInitialise) return;
     if (_chargementEnCours || _interstitielleChargee) return;
     _chargementEnCours = true;
     InterstitialAd.load(

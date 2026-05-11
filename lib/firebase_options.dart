@@ -63,7 +63,6 @@ class DefaultFirebaseOptions {
     messagingSenderId: '944165086970',
     projectId: 'ambu-time',
     storageBucket: 'ambu-time.firebasestorage.app',
-    androidClientId: '944165086970-dar0nb909efe4j26gkm5adnk9so7aehg.apps.googleusercontent.com',
     iosClientId: '944165086970-rdpc97eejfia2uide4t0p2n0he988uki.apps.googleusercontent.com',
     iosBundleId: 'com.onnoff.ambutime',
   );

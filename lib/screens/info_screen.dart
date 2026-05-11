@@ -1,4 +1,5 @@
 
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
@@ -39,7 +40,7 @@ class _InfoScreenState extends State<InfoScreen> {
               decoration: AppTheme.cardDecoration(),
               child: Column(children: [
                 _infoRow('Application', 'Ambu Time'),
-                _infoRow('Plateforme', 'Android'),
+                _infoRow('Plateforme', Platform.isIOS ? 'iOS' : 'Android'),
                 _infoRow('Convention', 'CCN Transports Sanitaires'),
                 Divider(color: AppTheme.bgCardBorder),
                 GestureDetector(
@@ -49,7 +50,7 @@ class _InfoScreenState extends State<InfoScreen> {
                     child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                       Text('Version', style: TextStyle(fontSize: 12, color: AppTheme.textPrimary)),
                       Row(children: [
-                        if (widget.isPro) Container(
+                        if (widget.isPro && !Platform.isIOS) Container(
                           margin: const EdgeInsets.only(right: 8),
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
@@ -60,7 +61,7 @@ class _InfoScreenState extends State<InfoScreen> {
                           child: Text('PRO', style: TextStyle(fontSize: 10,
                               fontWeight: FontWeight.w700, color: AppTheme.colorGreen)),
                         ),
-                        Text('1.0.6', style: TextStyle(fontSize: 12,
+                        Text('1.0.24', style: TextStyle(fontSize: 12,
                             fontWeight: FontWeight.w500, color: AppTheme.colorBlue)),
                       ]),
                     ]),
@@ -87,7 +88,7 @@ class _InfoScreenState extends State<InfoScreen> {
                   Text('Textes de référence',
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
                           color: widget.isPro ? AppTheme.textPrimary : AppTheme.textTertiary)),
-                  if (widget.isPro) ...[
+                  if (widget.isPro && !Platform.isIOS) ...[
                     const Spacer(),
                     AppTheme.badge('Pro', AppTheme.blueAccent.withValues(alpha: 0.15), AppTheme.blueAccent),
                   ],

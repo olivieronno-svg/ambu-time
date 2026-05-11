@@ -380,7 +380,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                           int.parse(dernierMois.split('-')[1]));
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Activez le mode testeur dans Info !')));
+                          content: Text('Export PDF disponible dans la version Pro.')));
                     }
                   }
                 },

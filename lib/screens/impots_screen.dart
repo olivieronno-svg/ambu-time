@@ -432,7 +432,7 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                             _exporterAttestation(annee);
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                                content: Text('Activez le mode Pro dans Info !')));
+                                content: Text('Export attestation disponible dans la version Pro.')));
                           }
                         },
                         style: ElevatedButton.styleFrom(

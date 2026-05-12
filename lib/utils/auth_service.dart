@@ -25,16 +25,32 @@ class AuthService {
       );
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) return null;
+      debugPrint('[AppleSignIn] Authorization error: ${e.code} - ${e.message}');
       rethrow;
     }
     if (appleCredential.identityToken == null) {
-      throw Exception('Apple n\'a pas renvoyé d\'identityToken');
+      debugPrint('[AppleSignIn] Apple a renvoye une credential sans identityToken');
+      throw Exception('Connexion Apple incomplete. Reessayez ou utilisez votre email.');
     }
     final oauthCredential = OAuthProvider('apple.com').credential(
       idToken: appleCredential.identityToken,
       rawNonce: rawNonce,
     );
-    return await _auth.signInWithCredential(oauthCredential);
+    try {
+      return await _auth.signInWithCredential(oauthCredential);
+    } on FirebaseAuthException catch (e) {
+      // Diagnostic precis pour Apple Review et pour debug en prod.
+      // invalid-credential = identityToken refuse par Firebase (config .p8 / Team
+      // ID / Key ID errones cote Firebase Console).
+      debugPrint('[AppleSignIn] FirebaseAuthException: ${e.code} - ${e.message}');
+      if (e.code == 'invalid-credential') {
+        throw Exception(
+          'Connexion Apple temporairement indisponible. '
+          'Veuillez utiliser email/mot de passe.',
+        );
+      }
+      rethrow;
+    }
   }
 
   static Future<UserCredential> signInWithEmail(String email, String password) async {

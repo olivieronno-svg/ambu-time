@@ -2,7 +2,6 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:url_launcher/url_launcher.dart';
 import '../utils/auth_service.dart';
 import '../utils/cloud_sync_service.dart';
@@ -609,31 +608,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
                           },
                         ),
                       ),
-                      if (!kIsWeb && Platform.isIOS) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(width: double.infinity, child: ElevatedButton.icon(
-                          onPressed: () async {
-                            final messenger = ScaffoldMessenger.of(context);
-                            try {
-                              final cred = await AuthService.signInWithApple();
-                              if (cred != null) await widget.onSignInSuccess?.call();
-                            } catch (e) {
-                              messenger.showSnackBar(SnackBar(
-                                content: Text('Erreur Apple : $e'),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 8),
-                              ));
-                            }
-                          },
-                          icon: const Icon(Icons.apple, size: 20),
-                          label: const Text('Continuer avec Apple'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 11),
-                          ),
-                        )),
-                      ],
                     ]),
                   );
                 }

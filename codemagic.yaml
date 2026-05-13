@@ -53,6 +53,16 @@ workflows:
           find . -name "Podfile" -execdir pod install \;
       - name: Build ipa
         script: |
+          # flutter clean evite tout cache local ou pre-build de l'IPA.
+          # Les echo permettent de tracer dans les logs Codemagic la version
+          # reellement compilee, pour diagnostiquer les collisions Apple Store
+          # ("attribute value already used").
+          flutter clean
+          flutter pub get
+          echo "=== Version qui va etre buildee ==="
+          grep "^version:" pubspec.yaml
+          echo "=== Generated.xcconfig ==="
+          cat ios/Flutter/Generated.xcconfig | grep -E "FLUTTER_BUILD_(NAME|NUMBER)" || true
           flutter build ipa --release \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:

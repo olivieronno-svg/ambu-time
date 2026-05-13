@@ -57,14 +57,25 @@ workflows:
           # Les echo permettent de tracer dans les logs Codemagic la version
           # reellement compilee, pour diagnostiquer les collisions Apple Store
           # ("attribute value already used").
+          # Les flags --build-name / --build-number sont passes explicitement
+          # depuis pubspec.yaml pour eviter toute ambiguite avec Generated.xcconfig.
           flutter clean
           flutter pub get
-          echo "=== Version qui va etre buildee ==="
-          grep "^version:" pubspec.yaml
+          VERSION_FULL=$(grep "^version:" pubspec.yaml | sed 's/version:\s*//' | tr -d ' \r\n')
+          BUILD_NAME=$(echo "$VERSION_FULL" | cut -d'+' -f1)
+          BUILD_NUMBER=$(echo "$VERSION_FULL" | cut -d'+' -f2)
+          echo "=== Version extracted from pubspec.yaml ==="
+          echo "VERSION_FULL = $VERSION_FULL"
+          echo "BUILD_NAME = $BUILD_NAME"
+          echo "BUILD_NUMBER = $BUILD_NUMBER"
           echo "=== Generated.xcconfig ==="
           cat ios/Flutter/Generated.xcconfig | grep -E "FLUTTER_BUILD_(NAME|NUMBER)" || true
           flutter build ipa --release \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_NUMBER" \
             --export-options-plist=/Users/builder/export_options.plist
+          echo "=== IPA Info.plist after build ==="
+          unzip -p build/ios/ipa/*.ipa Payload/*.app/Info.plist | plutil -p - 2>/dev/null | grep -E "Bundle(ShortVersion|Version)" || echo "Could not extract Info.plist from IPA"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log

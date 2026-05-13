@@ -61,7 +61,7 @@ class _InfoScreenState extends State<InfoScreen> {
                           child: Text('PRO', style: TextStyle(fontSize: 10,
                               fontWeight: FontWeight.w700, color: AppTheme.colorGreen)),
                         ),
-                        Text('1.0.26', style: TextStyle(fontSize: 12,
+                        Text('1.0.27', style: TextStyle(fontSize: 12,
                             fontWeight: FontWeight.w500, color: AppTheme.colorBlue)),
                       ]),
                     ]),

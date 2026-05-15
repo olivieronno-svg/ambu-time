@@ -2,7 +2,6 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../utils/auth_service.dart';
 import '../utils/cloud_sync_service.dart';
 import '../utils/excel_service.dart';
@@ -11,7 +10,6 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../models/garde.dart';
 import '../models/prime.dart';
-import '../utils/purchase_service.dart';
 import '../utils/storage.dart';
 import '../main.dart';
 
@@ -157,13 +155,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
     return s2 <= s1;
   }
 
-  Future<void> _ouvrirLienExterne(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
   /// Suppression du compte Firebase + données cloud + données locales.
   /// Obligatoire par Google Play depuis 2024 pour toute app avec compte.
   Future<void> _confirmerSuppressionCompte() async {
@@ -171,12 +162,11 @@ class _ParametresScreenState extends State<ParametresScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer le compte ?'),
-        content: Text(
+        content: const Text(
           'Cette action est irréversible. Elle va :\n\n'
           '• Supprimer définitivement ton compte Ambu Time\n'
           '• Effacer toutes tes données synchronisées (gardes, paramètres)\n'
-          '• Effacer les données stockées sur cet appareil'
-          '${Platform.isIOS ? '' : '\n\nLes achats Pro restent liés à ton compte Google Play et peuvent être restaurés.'}',
+          '• Effacer les données stockées sur cet appareil',
         ),
         actions: [
           TextButton(
@@ -674,114 +664,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
                 );
               },
             ),
-
-            // ── Version Pro ────────────────────────────────────────
-            // Masquee sur iOS : pas d'IAP (compte Apple Individual). Toutes les
-            // features Pro sont deja debloquees gratuitement cote iOS via main.dart.
-            if (!Platform.isIOS) ...[
-            _sectionTitle('Version Pro'),
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(14),
-              decoration: AppTheme.cardDecoration(
-                borderColor: widget.isPro
-                    ? AppTheme.colorGreen.withValues(alpha: 0.4)
-                    : AppTheme.colorAmber.withValues(alpha: 0.4)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text(widget.isPro ? 'Version Pro activée ✓' : 'Version gratuite',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
-                          color: widget.isPro ? AppTheme.colorGreen : AppTheme.textPrimary)),
-                  if (widget.isPro)
-                    AppTheme.badge('PRO', AppTheme.colorGreen.withValues(alpha: 0.15), AppTheme.colorGreen),
-                ]),
-                if (!widget.isPro) ...[
-                  const SizedBox(height: 8),
-                  _featurePro('Export PDF illimité'),
-                  _featurePro('Graphiques avancés'),
-                  _featurePro('Mes Droits — CCN & Code du travail'),
-                  const SizedBox(height: 12),
-                  SizedBox(width: double.infinity, child: ElevatedButton(
-                    onPressed: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      final result = await PurchaseService.acheterPro();
-                      if (!mounted) return;
-                      switch (result) {
-                        case AchatResult.succes:
-                          await widget.onPurchaseSuccess?.call();
-                          messenger.showSnackBar(const SnackBar(
-                              content: Text('Version Pro activée !')));
-                          break;
-                        case AchatResult.annule:
-                          messenger.showSnackBar(const SnackBar(
-                              content: Text('Achat annulé.')));
-                          break;
-                        case AchatResult.offerIndisponible:
-                          messenger.showSnackBar(const SnackBar(
-                              duration: Duration(seconds: 6),
-                              content: Text(
-                                  'Abonnement temporairement indisponible. '
-                                  'Vérifiez votre connexion et réessayez dans quelques minutes.')));
-                          break;
-                        case AchatResult.echec:
-                          messenger.showSnackBar(const SnackBar(
-                              duration: Duration(seconds: 6),
-                              content: Text(
-                                  "Erreur lors de l'achat. Veuillez réessayer ou contacter le support.")));
-                          break;
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.colorAmber),
-                    child: const Text('Passer à la version Pro — 2,99 €/mois',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                  )),
-                  // ── Conditions d'abonnement (obligatoire Apple + Google) ──
-                  const SizedBox(height: 10),
-                  Text(
-                    'Abonnement mensuel de 2,99 €. Renouvelé automatiquement '
-                    'sauf résiliation 24h avant la fin de la période. '
-                    'Gérable depuis votre compte Google Play ou App Store.',
-                    style: TextStyle(fontSize: 10, color: AppTheme.textSecondary,
-                        height: 1.35),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    GestureDetector(
-                      onTap: () => _ouvrirLienExterne(
-                          'https://olivieronno-svg.github.io/ambu-time/privacy.html'),
-                      child: Text('Politique de confidentialité',
-                          style: TextStyle(fontSize: 10,
-                              color: AppTheme.colorBlue,
-                              decoration: TextDecoration.underline)),
-                    ),
-                    Text(' · ', style: TextStyle(fontSize: 10,
-                        color: AppTheme.textTertiary)),
-                    GestureDetector(
-                      onTap: () => _ouvrirLienExterne(
-                          'https://olivieronno-svg.github.io/ambu-time/delete-account.html'),
-                      child: Text('Conditions',
-                          style: TextStyle(fontSize: 10,
-                              color: AppTheme.colorBlue,
-                              decoration: TextDecoration.underline)),
-                    ),
-                  ]),
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: () async {
-                      final messenger = ScaffoldMessenger.of(context);
-                      final ok = await PurchaseService.restaurerAchats();
-                      if (!mounted) return;
-                      messenger.showSnackBar(SnackBar(
-                          content: Text(ok ? 'Achats restaurés !' : 'Aucun achat trouvé')));
-                      if (ok) await widget.onPurchaseSuccess?.call();
-                    },
-                    child: Center(child: Text('Restaurer mes achats',
-                        style: TextStyle(fontSize: 12, color: AppTheme.colorBlue))),
-                  ),
-                ],
-              ]),
-            ),
-            ],
 
             // ── Quatorzaine ────────────────────────────────────────
             _sectionTitle('Quatorzaine'),
@@ -1321,14 +1203,6 @@ class _ParametresScreenState extends State<ParametresScreen> {
     ]),
   );
 
-  Widget _featurePro(String label) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(Icons.check_circle_outline, size: 14, color: AppTheme.colorAmber),
-      const SizedBox(width: 6),
-      Expanded(child: Text(label, style: TextStyle(fontSize: 12, color: AppTheme.textSecondary))),
-    ]),
-  );
 }
 
 class _EmailAuthForm extends StatefulWidget {

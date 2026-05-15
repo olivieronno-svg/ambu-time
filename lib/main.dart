@@ -5,7 +5,6 @@ import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'utils/ad_service.dart';
 import 'utils/cloud_sync_service.dart';
@@ -23,13 +22,11 @@ import 'models/garde.dart';
 import 'models/prime.dart';
 import 'utils/calculs.dart';
 import 'utils/storage.dart';
-import 'utils/purchase_service.dart';
 import 'app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await PurchaseService.initialiser();
   if (Platform.isIOS) {
     final status = await AppTrackingTransparency.trackingAuthorizationStatus;
     if (status == TrackingStatus.notDetermined) {
@@ -133,11 +130,10 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   double _idajTier2Seuil = 12;
   DateTime? _debutQuatorzaine;
   bool _chargement = true;
-  bool _isPro = false;
-  // iOS : pas d'IAP (compte Apple Individual). Pour éviter les locks visuels
-  // sans possibilité d'achat, toutes les features Pro sont débloquées sur iOS.
-  // Les pubs continuent de s'afficher (revenu principal côté iOS).
-  bool get _proFeaturesUnlocked => _isPro || Platform.isIOS;
+  // App 100 % gratuite + pubs sur iOS ET Android (aucun abonnement Pro).
+  // Toutes les fonctionnalités (export PDF, Mes Droits, graphiques) sont
+  // accessibles gratuitement ; les pubs s'affichent pour tout le monde.
+  bool get _proFeaturesUnlocked => true;
   int? _compteurNavigation = 0;
   Garde? _gardeAModifier;
   final List<Garde> _gardes = [];
@@ -145,54 +141,26 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   String? _dernierUid;
   bool _syncHorsLigne = false; // évite les snackbars en rafale quand offline
 
-  void Function(CustomerInfo)? _customerInfoListener;
-
   @override
   void initState() {
     super.initState();
     _chargerDonnees();
-    _chargerStatutPro();
-    // Init UMP (consentement RGPD + ATT iOS) puis MobileAds, ensuite seulement
-    // on precharge l'interstitielle si le user n'est pas Pro. Differe au premier
-    // frame : le formulaire UMP a besoin que l'Activity soit resumee.
+    // Init UMP (consentement RGPD + ATT iOS) puis MobileAds, ensuite on
+    // precharge l'interstitielle. App gratuite : les pubs s'affichent toujours.
+    // Differe au premier frame : le formulaire UMP a besoin que l'Activity
+    // soit resumee.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AdService.initialiser().then((_) {
-        if (mounted && !_isPro) AdService.chargerInterstitielle();
+        if (mounted) AdService.chargerInterstitielle();
       });
     });
     _dernierUid = FirebaseAuth.instance.currentUser?.uid;
     _authSub = FirebaseAuth.instance.authStateChanges().listen(_onAuthChange);
-
-    // RevenueCat notifie l'app a chaque changement d'abonnement (achat,
-    // expiration, restauration). Source unique de verite pour _isPro.
-    // iOS : RevenueCat n'est pas initialise (compte Individual sans Paid Apps
-    // Agreement), donc pas de listener.
-    if (!Platform.isIOS) {
-      _customerInfoListener = (info) {
-        if (!mounted) return;
-        final pro = info.entitlements.active.containsKey(PurchaseService.entitlementId);
-        if (pro != _isPro) {
-          setState(() {
-            _isPro = pro;
-            if (pro) _compteurNavigation = 0;
-          });
-          if (_isPro) {
-            AdService.disposerInterstitielle();
-          } else {
-            AdService.chargerInterstitielle();
-          }
-        }
-      };
-      Purchases.addCustomerInfoUpdateListener(_customerInfoListener!);
-    }
   }
 
   @override
   void dispose() {
     _authSub?.cancel();
-    if (_customerInfoListener != null) {
-      Purchases.removeCustomerInfoUpdateListener(_customerInfoListener!);
-    }
     super.dispose();
   }
 
@@ -242,41 +210,8 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         _gardeAModifier = null;
         _currentIndex = 0;
       });
-      // _isPro n'est PAS reset : RevenueCat est lie au compte Google Play (pas
-      // au compte Firebase), donc l'abonnement reste actif au switch Firebase.
-      // Le listener Purchases.addCustomerInfoUpdateListener corrigera si besoin.
-      _chargerStatutPro();
     }
     _dernierUid = nouvelUid;
-  }
-
-  Future<void> _chargerStatutPro() async {
-    final pro = await PurchaseService.isPro();
-    final tester = await Storage.isTesterPro();
-    if (!mounted) return;
-    setState(() => _isPro = pro || tester);
-    if (!_isPro) AdService.chargerInterstitielle();
-  }
-
-  // Bascule _isPro a true des le retour de PurchaseService.acheterPro
-  // (achat / restauration deja confirme par RevenueCat). Pas de re-check
-  // _chargerStatutPro ensuite : pour les testeurs de licence Google Play,
-  // getCustomerInfo retourne false (entitlement sandbox non persiste) et
-  // ecraserait _isPro juste apres l'avoir mis a true. Le listener
-  // Purchases.addCustomerInfoUpdateListener corrigera si l'entitlement
-  // change plus tard (expiration, annulation).
-  Future<void> _onAchatProSucces() async {
-    if (!mounted) return;
-    setState(() {
-      _isPro = true;
-      _compteurNavigation = 0;
-    });
-    AdService.disposerInterstitielle();
-    // Persistance locale pour les testeurs de licence Google Play : leur
-    // entitlement RevenueCat n'est pas garanti entre sessions (sandbox).
-    // Pour un vrai client, RevenueCat suffit ; ce flag est juste belt &
-    // suspenders. Le listener Purchases corrigera si l'entitlement expire.
-    await Storage.setTesterPro(true);
   }
 
   Future<void> _chargerDonnees() async {
@@ -668,12 +603,11 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
 
   void _navigateTo(int index) {
     if (index == _currentIndex) return;
-    if (!_isPro) {
-      _compteurNavigation = (_compteurNavigation ?? 0) + 1;
-      if (_compteurNavigation! >= 3) {
-        AdService.afficherInterstitielle(isPro: _isPro);
-        _compteurNavigation = 0;
-      }
+    // App gratuite : interstitielle toutes les 3 navigations pour tous.
+    _compteurNavigation = (_compteurNavigation ?? 0) + 1;
+    if (_compteurNavigation! >= 3) {
+      AdService.afficherInterstitielle(isPro: false);
+      _compteurNavigation = 0;
     }
     setState(() => _currentIndex = index);
   }
@@ -812,7 +746,6 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         idajTier2Seuil: _idajTier2Seuil,
         onSignInSuccess: _onSignInSuccess,
         isPro: _proFeaturesUnlocked,
-        onPurchaseSuccess: _onAchatProSucces,
       ),
       ImpotsScreen(
         gardes: _gardes, tauxHoraire: _tauxHoraire, panierRepas: _panierRepas,

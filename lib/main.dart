@@ -129,6 +129,9 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   double _idajTier2Pourcentage = 100;
   double _idajTier2Seuil = 12;
   DateTime? _debutQuatorzaine;
+  double _heuresContractuellesHebdo = 39;
+  bool _tempsPartiel = false;
+  bool _quatorzaineActivee = true;
   bool _chargement = true;
   // App 100 % gratuite + pubs sur iOS ET Android (aucun abonnement Pro).
   // Toutes les fonctionnalités (export PDF, Mes Droits, graphiques) sont
@@ -274,6 +277,9 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         _idajSeuilHeures = (params['idajSeuilHeures'] as num?)?.toDouble() ?? 12.0;
         _idajTier2Pourcentage = (params['idajTier2Pourcentage'] as num?)?.toDouble() ?? 100.0;
         _idajTier2Seuil = (params['idajTier2Seuil'] as num?)?.toDouble() ?? 12.0;
+        _heuresContractuellesHebdo = (params['heuresContractuellesHebdo'] as num?)?.toDouble() ?? 39.0;
+        _tempsPartiel = params['tempsPartiel'] as bool? ?? false;
+        _quatorzaineActivee = params['quatorzaineActivee'] as bool? ?? true;
         Calculs.majorationNuitActivee = _majorationNuitActivee;
         Calculs.majorationNuitPourcentage = _majorationNuitPourcentage;
         Calculs.majorationNuitDebut = _majorationNuitDebut;
@@ -282,6 +288,9 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         Calculs.idajSeuilHeures = _idajSeuilHeures;
         Calculs.idajTier2Pourcentage = _idajTier2Pourcentage;
         Calculs.idajTier2Seuil = _idajTier2Seuil;
+        Calculs.heuresContractuellesHebdo = _heuresContractuellesHebdo;
+        Calculs.tempsPartiel = _tempsPartiel;
+        Calculs.quatorzaineActivee = _quatorzaineActivee;
         _chargement = false;
       });
 
@@ -327,6 +336,27 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     _invaliderCacheQuatorzaine();
     setState(() => _gardes.removeWhere((g) => g.id == id));
     await Storage.sauvegarderGardes(_gardes);
+    _syncToCloud();
+  }
+
+  // Réglages contrat/cycle (heures hebdo, temps partiel, quatorzaine on/off).
+  // Persistance isolée pour ne pas dépendre du callback paramètres principal.
+  Future<void> _modifierConfigHeures(
+      double heuresHebdo, bool tempsPartiel, bool quatorzaineActivee) async {
+    _invaliderCacheQuatorzaine();
+    setState(() {
+      _heuresContractuellesHebdo = heuresHebdo;
+      _tempsPartiel = tempsPartiel;
+      _quatorzaineActivee = quatorzaineActivee;
+      Calculs.heuresContractuellesHebdo = heuresHebdo;
+      Calculs.tempsPartiel = tempsPartiel;
+      Calculs.quatorzaineActivee = quatorzaineActivee;
+    });
+    await Storage.sauvegarderConfigHeures(
+      heuresContractuellesHebdo: heuresHebdo,
+      tempsPartiel: tempsPartiel,
+      quatorzaineActivee: quatorzaineActivee,
+    );
     _syncToCloud();
   }
 
@@ -744,6 +774,10 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
         idajSeuilHeures: _idajSeuilHeures,
         idajTier2Pourcentage: _idajTier2Pourcentage,
         idajTier2Seuil: _idajTier2Seuil,
+        heuresContractuellesHebdo: _heuresContractuellesHebdo,
+        tempsPartiel: _tempsPartiel,
+        quatorzaineActivee: _quatorzaineActivee,
+        onConfigHeuresModifiee: _modifierConfigHeures,
         onSignInSuccess: _onSignInSuccess,
         isPro: _proFeaturesUnlocked,
       ),

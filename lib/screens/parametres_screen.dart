@@ -40,6 +40,10 @@ class ParametresScreen extends StatefulWidget {
   final Function(double, double, double, double, DateTime?,
       List<PrimeMensuelle>, double, double, String, double, int, double, bool,
       double, int, bool, double, double, double, double) onParametresModifies;
+  final double heuresContractuellesHebdo;
+  final bool tempsPartiel;
+  final bool quatorzaineActivee;
+  final Future<void> Function(double, bool, bool)? onConfigHeuresModifiee;
   final Future<void> Function()? onSignInSuccess;
   final bool isPro;
   final Future<void> Function()? onPurchaseSuccess;
@@ -70,6 +74,10 @@ class ParametresScreen extends StatefulWidget {
     this.idajTier2Pourcentage = 100,
     this.idajTier2Seuil = 12,
     this.debutQuatorzaine,
+    this.heuresContractuellesHebdo = 39,
+    this.tempsPartiel = false,
+    this.quatorzaineActivee = true,
+    this.onConfigHeuresModifiee,
     this.onSignInSuccess,
     this.isPro = false,
     this.onPurchaseSuccess,
@@ -100,6 +108,10 @@ class _ParametresScreenState extends State<ParametresScreen> {
   late bool _majorationNuitActivee;
   late bool _idajActivee;
   DateTime? _debutQuatorzaine;
+  late double _heuresContractuellesHebdo;
+  late bool _tempsPartiel;
+  late bool _quatorzaineActivee;
+  late TextEditingController _heuresHebdoCtrl;
 
   @override
   void initState() {
@@ -131,6 +143,21 @@ class _ParametresScreenState extends State<ParametresScreen> {
     _majorationNuitActivee = widget.majorationNuitActivee;
     _idajActivee = widget.idajActivee;
     _debutQuatorzaine = widget.debutQuatorzaine;
+    _heuresContractuellesHebdo = widget.heuresContractuellesHebdo;
+    _tempsPartiel = widget.tempsPartiel;
+    _quatorzaineActivee = widget.quatorzaineActivee;
+    _heuresHebdoCtrl = TextEditingController(
+        text: _formatHeuresHebdo(widget.heuresContractuellesHebdo));
+  }
+
+  // Affiche 35 plutôt que 35.0, mais 28.5 si décimal.
+  String _formatHeuresHebdo(double h) =>
+      h == h.roundToDouble() ? h.toStringAsFixed(0) : h.toString();
+
+  // Applique + persiste les 3 réglages contrat/cycle via le callback parent.
+  void _commitConfigHeures() {
+    widget.onConfigHeuresModifiee
+        ?.call(_heuresContractuellesHebdo, _tempsPartiel, _quatorzaineActivee);
   }
 
   @override
@@ -141,6 +168,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
     _majNuitPctCtrl.dispose(); _majNuitDebutCtrl.dispose();
     _idajPctCtrl.dispose(); _idajSeuilCtrl.dispose();
     _idajTier2PctCtrl.dispose(); _idajTier2SeuilCtrl.dispose();
+    _heuresHebdoCtrl.dispose();
     super.dispose();
   }
 
@@ -665,18 +693,113 @@ class _ParametresScreenState extends State<ParametresScreen> {
               },
             ),
 
-            // ── Quatorzaine ────────────────────────────────────────
-            _sectionTitle('Quatorzaine'),
+            // ── Contrat & calcul des heures ────────────────────────
+            _sectionTitle('Contrat & calcul des heures'),
             Container(
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.all(14),
               decoration: AppTheme.cardDecoration(),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // Type de contrat
+                Text('Type de contrat', style: TextStyle(fontSize: 12,
+                    fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: _chipChoix('Temps plein',
+                      'Heures sup +25% / +50%', !_tempsPartiel, () {
+                    setState(() => _tempsPartiel = false);
+                    _commitConfigHeures();
+                  })),
+                  const SizedBox(width: 8),
+                  Expanded(child: _chipChoix('Temps partiel',
+                      'Heures compl. +10% / +25%', _tempsPartiel, () {
+                    setState(() => _tempsPartiel = true);
+                    _commitConfigHeures();
+                  })),
+                ]),
+                const SizedBox(height: 12),
+                Divider(color: AppTheme.bgCardBorder),
+                const SizedBox(height: 8),
+
+                // Heures contractuelles / semaine
+                Text('Heures contractuelles / semaine', style: TextStyle(fontSize: 12,
+                    fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  _presetHeures(35),
+                  const SizedBox(width: 8),
+                  _presetHeures(39),
+                  const SizedBox(width: 8),
+                  Expanded(child: SizedBox(
+                    height: 40,
+                    child: TextField(
+                      controller: _heuresHebdoCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        suffixText: 'h/sem',
+                        suffixStyle: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: AppTheme.bgCardBorder)),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: AppTheme.blueAccent)),
+                      ),
+                      onSubmitted: (v) => _appliquerHeuresHebdo(v),
+                      onTapOutside: (_) => _appliquerHeuresHebdo(_heuresHebdoCtrl.text),
+                    ),
+                  )),
+                ]),
+                const SizedBox(height: 6),
+                Text(
+                  _tempsPartiel
+                      ? 'Temps partiel : au-delà du contrat, heures complémentaires '
+                          '+10% (jusqu\'à 1/10) puis +25%, plafonnées à 1/3 du contrat.'
+                      : 'Temps plein : au-delà du contrat, heures supplémentaires '
+                          '+25% (8 premières) puis +50%.',
+                  style: TextStyle(fontSize: 10, color: AppTheme.textSecondary, height: 1.3),
+                ),
+                const SizedBox(height: 12),
+                Divider(color: AppTheme.bgCardBorder),
+                const SizedBox(height: 4),
+
+                // Mode de calcul : quatorzaine ou semaine
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    Text('Calcul par quatorzaine (14 j)', style: TextStyle(fontSize: 12,
+                        fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+                    Text(
+                      _quatorzaineActivee
+                          ? 'Seuil : ${_formatHeuresHebdo(_heuresContractuellesHebdo * 2)} h / 14 jours'
+                          : 'Désactivé → calcul à la semaine : '
+                              '${_formatHeuresHebdo(_heuresContractuellesHebdo)} h / 7 jours',
+                      style: TextStyle(fontSize: 10, color: AppTheme.textSecondary),
+                    ),
+                  ])),
+                  Switch(
+                    value: _quatorzaineActivee,
+                    onChanged: (v) {
+                      setState(() => _quatorzaineActivee = v);
+                      _commitConfigHeures();
+                    },
+                  ),
+                ]),
+                const SizedBox(height: 4),
+                Divider(color: AppTheme.bgCardBorder),
+                const SizedBox(height: 8),
+
+                // Date de début de la 1ère période
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Date de début', style: TextStyle(fontSize: 12,
+                    Text(_quatorzaineActivee
+                        ? 'Début 1ère quatorzaine' : 'Début 1ère semaine',
+                        style: TextStyle(fontSize: 12,
                         fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
-                    Text('Calcul automatique', style: TextStyle(fontSize: 10,
+                    Text('Sinon calcul automatique', style: TextStyle(fontSize: 10,
                         color: AppTheme.textSecondary)),
                   ]),
                   GestureDetector(
@@ -941,8 +1064,15 @@ class _ParametresScreenState extends State<ParametresScreen> {
               padding: const EdgeInsets.all(14),
               decoration: AppTheme.cardDecoration(),
               child: Column(children: [
-                _infoRow('Heures supp. (78h → 86h)', '+25%'),
-                _infoRow('Heures supp. (au-delà 86h)', '+50%'),
+                if (_tempsPartiel) ...[
+                  _infoRow('Heures compl. (jusqu\'à 1/10 du contrat)', '+10%'),
+                  _infoRow('Heures compl. (1/10 → 1/3 du contrat)', '+25%'),
+                ] else ...[
+                  _infoRow(
+                      'Heures supp. (${_formatHeuresHebdo(_heuresContractuellesHebdo * (_quatorzaineActivee ? 2 : 1))}h → +8h)',
+                      '+25%'),
+                  _infoRow('Heures supp. (au-delà)', '+50%'),
+                ],
                 _infoRow('Dimanche / jour férié', '+25% + forfait'),
               ]),
             ),
@@ -955,7 +1085,8 @@ class _ParametresScreenState extends State<ParametresScreen> {
               decoration: AppTheme.cardDecoration(),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 _infoRow('Conv. Coll.', 'CCN Transports sanitaires'),
-                _infoRow('Réf. quatorzaine', '78h'),
+                _infoRow(_quatorzaineActivee ? 'Réf. quatorzaine' : 'Réf. semaine',
+                    '${_formatHeuresHebdo(_heuresContractuellesHebdo * (_quatorzaineActivee ? 2 : 1))}h'),
                 const SizedBox(height: 10),
                 Divider(color: AppTheme.bgCardBorder),
                 const SizedBox(height: 10),
@@ -1103,6 +1234,73 @@ class _ParametresScreenState extends State<ParametresScreen> {
     child: Text(title.toUpperCase(), style: TextStyle(fontSize: 10,
         fontWeight: FontWeight.w500, color: AppTheme.textTertiary, letterSpacing: 0.8)),
   );
+
+  // Bouton 2 états (type de contrat).
+  Widget _chipChoix(String titre, String sousTitre, bool selected,
+      VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.blueAccent : AppTheme.blueAccent.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: selected ? AppTheme.blueAccent
+              : AppTheme.blueAccent.withValues(alpha: 0.3)),
+        ),
+        child: Column(children: [
+          Text(titre, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : AppTheme.blueAccent)),
+          const SizedBox(height: 2),
+          Text(sousTitre, textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 9,
+                  color: selected ? Colors.white.withValues(alpha: 0.85)
+                      : AppTheme.textSecondary)),
+        ]),
+      ),
+    );
+  }
+
+  // Préréglage rapide d'heures hebdo (35h / 39h).
+  Widget _presetHeures(int h) {
+    final selected = _heuresContractuellesHebdo == h.toDouble();
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _heuresContractuellesHebdo = h.toDouble();
+          _heuresHebdoCtrl.text = h.toString();
+        });
+        _commitConfigHeures();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.blueAccent : AppTheme.blueAccent.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: selected ? AppTheme.blueAccent
+              : AppTheme.blueAccent.withValues(alpha: 0.3)),
+        ),
+        child: Text('${h}h', style: TextStyle(fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppTheme.blueAccent)),
+      ),
+    );
+  }
+
+  // Valide la saisie libre du champ heures hebdo (clamp 1–60).
+  void _appliquerHeuresHebdo(String v) {
+    final parsed = double.tryParse(v.replaceAll(',', '.').trim());
+    if (parsed == null || parsed <= 0) {
+      _heuresHebdoCtrl.text = _formatHeuresHebdo(_heuresContractuellesHebdo);
+      return;
+    }
+    final h = parsed.clamp(1.0, 60.0);
+    setState(() {
+      _heuresContractuellesHebdo = h;
+      _heuresHebdoCtrl.text = _formatHeuresHebdo(h);
+    });
+    _commitConfigHeures();
+  }
 
   Widget _modeCpSelector() {
     final modes = [

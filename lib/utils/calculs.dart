@@ -13,6 +13,43 @@ class Calculs {
   static double majorationNuitPourcentage = 25; // % du taux horaire
   static int majorationNuitDebut = 21; // heure de début de la "nuit" (fin = 6h)
 
+  // ── Contrat & cycle de calcul des heures ─────────────────────────────────
+  // Heures contractuelles hebdomadaires (35, 39, ou valeur libre pour les
+  // contrats à temps partiel : 28, 30…).
+  static double heuresContractuellesHebdo = 39;
+  // false = temps plein  → heures supplémentaires (+25% les 8 premières, +50%)
+  // true  = temps partiel → heures complémentaires (+10% jusqu'à 1/10 du
+  //         contrat, +25% au-delà, plafonnées à 1/3 du contrat — Code du travail)
+  static bool tempsPartiel = false;
+  // true  = calcul par quatorzaine (cycle de 14 jours, seuil = heures hebdo ×2)
+  // false = calcul à la semaine    (cycle de 7 jours,  seuil = heures hebdo ×1)
+  static bool quatorzaineActivee = true;
+
+  // Seuil d'heures sur la période de calcul (au-delà = heures sup / compl.).
+  static double get seuilHeuresPeriode =>
+      heuresContractuellesHebdo * (quatorzaineActivee ? 2 : 1);
+
+  // Durée de la période de calcul en jours.
+  static int get dureePeriodeJours => quatorzaineActivee ? 14 : 7;
+
+  // Majoration € pour `extra` heures au-delà du seuil `seuil` (= heures
+  // contractuelles de la période). Temps plein : +25% pour les 8 premières
+  // puis +50%. Temps partiel : heures complémentaires +10% jusqu'à 1/10 du
+  // contrat, +25% au-delà, le tout plafonné à 1/3 du contrat.
+  static double _majorationExtra(double extra, double seuil, double taux) {
+    if (extra <= 0) return 0;
+    if (tempsPartiel) {
+      final plafond = seuil / 3;
+      final e = extra > plafond ? plafond : extra;
+      final seuil10 = seuil / 10;
+      final t1 = e <= seuil10 ? e : seuil10; // +10%
+      final t2 = e - t1; // +25%
+      return t1 * taux * 0.10 + t2 * taux * 0.25;
+    }
+    if (extra <= 8) return extra * taux * 0.25;
+    return 8 * taux * 0.25 + (extra - 8) * taux * 0.50;
+  }
+
   // IDAJ (indemnité de dépassement d'amplitude journalière)
   // Deux tranches configurables. La tranche 2 ne s'applique que si son seuil
   // est strictement supérieur à celui de la tranche 1 — sinon seule la tranche
@@ -123,17 +160,25 @@ class Calculs {
       gardes.where((g) => !g.jourNonTravaille)
           .fold(0.0, (sum, g) => sum + g.dureeHeures);
 
+  // Heures "en plus" sur la période : heures supplémentaires (temps plein) ou
+  // heures complémentaires (temps partiel, plafonnées à 1/3 du contrat).
   static double heuresSupp(List<Garde> gardes) {
-    double total = totalHeures(gardes);
-    return total <= 78 ? 0 : total - 78;
+    final total = totalHeures(gardes);
+    final seuil = seuilHeuresPeriode;
+    if (total <= seuil) return 0;
+    double extra = total - seuil;
+    if (tempsPartiel) {
+      final plafond = seuil / 3;
+      if (extra > plafond) extra = plafond;
+    }
+    return extra;
   }
 
   static double majorationHeuresSupp(List<Garde> gardes, double taux) {
-    double total = totalHeures(gardes);
-    if (total <= 78) return 0;
-    double supp = total - 78;
-    if (supp <= 8) return supp * taux * 0.25;
-    return 8 * taux * 0.25 + (supp - 8) * taux * 0.50;
+    final total = totalHeures(gardes);
+    final seuil = seuilHeuresPeriode;
+    if (total <= seuil) return 0;
+    return _majorationExtra(total - seuil, seuil, taux);
   }
 
   // ── CCN : Heures supp par quatorzaine, rattachées au mois de fin ──────────
@@ -167,13 +212,14 @@ class Calculs {
 
     DateTime debut = debutPremQuatorzaine;
     // Remonte au début si nécessaire
+    final periodeJours = dureePeriodeJours;
     while (debut.isAfter(gardesToutes.first.date)) {
-      debut = debut.subtract(const Duration(days: 14));
+      debut = debut.subtract(Duration(days: periodeJours));
     }
 
-    // Parcourt toutes les quatorzaines jusqu'à couvrir toutes les gardes
+    // Parcourt toutes les périodes jusqu'à couvrir toutes les gardes
     while (!debut.isAfter(gardesToutes.last.date)) {
-      final fin = debut.add(const Duration(days: 13));
+      final fin = debut.add(Duration(days: periodeJours - 1));
       final gardesQ = gardesToutes
           .where((g) => !g.date.isBefore(debut) && !g.date.isAfter(fin))
           .toList();
@@ -186,15 +232,14 @@ class Calculs {
           result[moisFin] = (result[moisFin] ?? 0) + hs;
         }
       }
-      debut = debut.add(const Duration(days: 14));
+      debut = debut.add(Duration(days: periodeJours));
     }
     return result;
   }
 
   static double majorationHSSurMontant(double hs, double taux) {
     if (hs <= 0) return 0;
-    if (hs <= 8) return hs * taux * 0.25;
-    return 8 * taux * 0.25 + (hs - 8) * taux * 0.50;
+    return _majorationExtra(hs, seuilHeuresPeriode, taux);
   }
 
   static String formatHeures(double heures) {

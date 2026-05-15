@@ -276,16 +276,17 @@ class _AccueilScreenState extends State<AccueilScreen> {
   DateTime? _quatorzaineActive() {
     if (widget.debutQuatorzaine == null) return null;
     final today = DateTime.now();
+    final periode = Calculs.dureePeriodeJours;
     DateTime debut = widget.debutQuatorzaine!;
-    while (debut.add(const Duration(days: 13)).isBefore(
+    while (debut.add(Duration(days: periode - 1)).isBefore(
         DateTime(today.year, today.month, today.day))) {
-      debut = debut.add(const Duration(days: 14));
+      debut = debut.add(Duration(days: periode));
     }
     return debut;
   }
 
   List<Garde> _gardesDeQuatorzaine(DateTime debut) {
-    final fin = debut.add(const Duration(days: 13));
+    final fin = debut.add(Duration(days: Calculs.dureePeriodeJours - 1));
     return widget.gardes.where((g) =>
         !g.date.isBefore(debut) && !g.date.isAfter(fin)).toList();
   }
@@ -313,13 +314,16 @@ class _AccueilScreenState extends State<AccueilScreen> {
     double brut = Calculs.totalBrut(gardesQ, taux: widget.tauxHoraire)
         + joursCP * ((152 * widget.tauxHoraire) + (17 * widget.tauxHoraire * 1.25)) / 26;
     double net = Calculs.netEstime(brut);
-    double progression = (totalHeures / 78).clamp(0.0, 1.0);
+    final double seuilHeures = Calculs.seuilHeuresPeriode;
+    double progression = (totalHeures / seuilHeures).clamp(0.0, 1.0);
 
+    final DateTime? finPeriode = quatorzaineActive?.add(
+        Duration(days: Calculs.dureePeriodeJours - 1));
     String periodeLabel = quatorzaineActive == null
         ? 'Toutes les gardes'
         : '${quatorzaineActive.day}/${quatorzaineActive.month}/${quatorzaineActive.year}'
             ' → '
-            '${quatorzaineActive.add(const Duration(days: 13)).day}/${quatorzaineActive.add(const Duration(days: 13)).month}/${quatorzaineActive.add(const Duration(days: 13)).year}';
+            '${finPeriode!.day}/${finPeriode.month}/${finPeriode.year}';
 
     return Scaffold(
       backgroundColor: AppTheme.bgPrimary,
@@ -354,12 +358,13 @@ class _AccueilScreenState extends State<AccueilScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                     Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Quatorzaine en cours',
+                      Text(Calculs.quatorzaineActivee
+                              ? 'Quatorzaine en cours' : 'Semaine en cours',
                           style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                       Text(periodeLabel, style: const TextStyle(
                           fontSize: 11, color: AppTheme.blue, fontWeight: FontWeight.w500)),
                     ]),
-                    Text('${Calculs.formatHeures(totalHeures)} / 78h',
+                    Text('${Calculs.formatHeures(totalHeures)} / ${Calculs.formatHeures(seuilHeures)}h',
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
                             color: AppTheme.blue)),
                   ]),
@@ -385,8 +390,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
               ),
               const SizedBox(height: 10),
 
-              // ── Alerte 78h ─────────────────────────────────────────
-              if (totalHeures >= 70 && totalHeures < 78) ...[
+              // ── Alerte seuil proche ────────────────────────────────
+              if (totalHeures >= seuilHeures - 8 && totalHeures < seuilHeures) ...[
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -405,18 +410,18 @@ class _AccueilScreenState extends State<AccueilScreen> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Attention — seuil 78h proche !',
+                      Text('Attention — seuil ${Calculs.formatHeures(seuilHeures)}h proche !',
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
                               color: AppTheme.colorAmber)),
                       Text(
-                        'Il te reste ${Calculs.formatHeures(78 - totalHeures)} avant les heures supplémentaires.',
+                        'Il te reste ${Calculs.formatHeures(seuilHeures - totalHeures)} avant les heures ${Calculs.tempsPartiel ? 'complémentaires' : 'supplémentaires'}.',
                         style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                       ),
                     ])),
                   ]),
                 ),
                 const SizedBox(height: 10),
-              ] else if (totalHeures >= 78) ...[
+              ] else if (totalHeures >= seuilHeures) ...[
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -435,11 +440,14 @@ class _AccueilScreenState extends State<AccueilScreen> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Heures supplémentaires !',
+                      Text(Calculs.tempsPartiel
+                              ? 'Heures complémentaires !' : 'Heures supplémentaires !',
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
                               color: AppTheme.colorRed)),
                       Text(
-                        '${Calculs.formatHeures(heuresSupp)} en heures supp. (+25% puis +50%)',
+                        Calculs.tempsPartiel
+                            ? '${Calculs.formatHeures(heuresSupp)} en heures compl. (+10% puis +25%)'
+                            : '${Calculs.formatHeures(heuresSupp)} en heures supp. (+25% puis +50%)',
                         style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                       ),
                     ])),
@@ -460,8 +468,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       'estimé ce mois', AppTheme.green),
                   _metricCard('Net estimé', '${net.toStringAsFixed(0)} €',
                       '~78% du brut', AppTheme.teal),
-                  _metricCard('H. supp.', Calculs.formatHeures(heuresSupp),
-                      'seuil à 78h',
+                  _metricCard(Calculs.tempsPartiel ? 'H. compl.' : 'H. supp.',
+                      Calculs.formatHeures(heuresSupp),
+                      'seuil à ${Calculs.formatHeures(seuilHeures)}h',
                       heuresSupp > 0 ? AppTheme.red : AppTheme.textSecondary),
                 ],
               ),

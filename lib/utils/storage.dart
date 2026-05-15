@@ -33,6 +33,9 @@ class Storage {
   static const _idajSeuilKey = 'idaj_seuil_heures';
   static const _idajTier2PctKey = 'idaj_tier2_pourcentage';
   static const _idajTier2SeuilKey = 'idaj_tier2_seuil';
+  static const _heuresContractuellesKey = 'heures_contractuelles_hebdo';
+  static const _tempsPartielKey = 'temps_partiel';
+  static const _quatorzaineActiveeKey = 'quatorzaine_activee';
 
   static Future<void> sauvegarderGardes(List<Garde> gardes) async {
     final prefs = await SharedPreferences.getInstance();
@@ -68,6 +71,9 @@ class Storage {
     double idajSeuilHeures = 12,
     double idajTier2Pourcentage = 100,
     double idajTier2Seuil = 12,
+    double heuresContractuellesHebdo = 39,
+    bool tempsPartiel = false,
+    bool quatorzaineActivee = true,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_tauxKey, taux);
@@ -89,6 +95,9 @@ class Storage {
     await prefs.setDouble(_idajSeuilKey, idajSeuilHeures);
     await prefs.setDouble(_idajTier2PctKey, idajTier2Pourcentage);
     await prefs.setDouble(_idajTier2SeuilKey, idajTier2Seuil);
+    await prefs.setDouble(_heuresContractuellesKey, heuresContractuellesHebdo);
+    await prefs.setBool(_tempsPartielKey, tempsPartiel);
+    await prefs.setBool(_quatorzaineActiveeKey, quatorzaineActivee);
     await prefs.setStringList(
         _primesKey, primes.map((p) => jsonEncode(p.toMap())).toList());
     if (debutQuatorzaine != null) {
@@ -143,7 +152,23 @@ class Storage {
       'idajSeuilHeures': prefs.getDouble(_idajSeuilKey) ?? 12.0,
       'idajTier2Pourcentage': prefs.getDouble(_idajTier2PctKey) ?? 100.0,
       'idajTier2Seuil': prefs.getDouble(_idajTier2SeuilKey) ?? 12.0,
+      'heuresContractuellesHebdo': prefs.getDouble(_heuresContractuellesKey) ?? 39.0,
+      'tempsPartiel': prefs.getBool(_tempsPartielKey) ?? false,
+      'quatorzaineActivee': prefs.getBool(_quatorzaineActiveeKey) ?? true,
     };
+  }
+
+  // Sauvegarde isolée des 3 réglages contrat/cycle (sans réécrire les autres
+  // paramètres salaire).
+  static Future<void> sauvegarderConfigHeures({
+    required double heuresContractuellesHebdo,
+    required bool tempsPartiel,
+    required bool quatorzaineActivee,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_heuresContractuellesKey, heuresContractuellesHebdo);
+    await prefs.setBool(_tempsPartielKey, tempsPartiel);
+    await prefs.setBool(_quatorzaineActiveeKey, quatorzaineActivee);
   }
 
   static Future<void> sauvegarderRappel({required String collegue, required double distance}) async {

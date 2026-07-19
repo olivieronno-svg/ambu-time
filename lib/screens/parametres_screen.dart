@@ -9,6 +9,7 @@ import '../utils/pdf_service.dart';
 import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../models/garde.dart';
+import 'premium_screen.dart';
 import '../models/prime.dart';
 import '../utils/storage.dart';
 import '../main.dart';
@@ -563,6 +564,48 @@ class _ParametresScreenState extends State<ParametresScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Paramètres', style: AppTheme.titleStyle()),
             const SizedBox(height: 16),
+
+            // ── Premium ────────────────────────────────────────────
+            GestureDetector(
+              onTap: widget.isPro
+                  ? null
+                  : () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const PremiumScreen())),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: widget.isPro
+                        ? [AppTheme.green, AppTheme.teal]
+                        : [AppTheme.violet, AppTheme.blue],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(children: [
+                  Icon(widget.isPro ? Icons.verified : Icons.workspace_premium,
+                      color: Colors.white, size: 30),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(widget.isPro ? 'Premium actif' : 'Passer en Premium',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      Text(
+                          widget.isPro
+                              ? 'Merci ! Export PDF et zéro publicité activés.'
+                              : 'Export PDF, zéro publicité — 3,99 €/mois.',
+                          style: const TextStyle(color: Colors.white70, fontSize: 12.5)),
+                    ]),
+                  ),
+                  if (!widget.isPro)
+                    const Icon(Icons.chevron_right, color: Colors.white70),
+                ]),
+              ),
+            ),
 
             // ── Poste ──────────────────────────────────────────────
             _sectionTitle('Poste'),

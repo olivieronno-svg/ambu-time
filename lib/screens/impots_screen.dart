@@ -5,6 +5,7 @@ import '../models/prime.dart';
 import '../utils/calculs.dart';
 import '../utils/pdf_service.dart';
 import '../app_theme.dart';
+import 'premium_screen.dart';
 
 class ImpotsScreen extends StatefulWidget {
   final List<Garde> gardes;
@@ -431,8 +432,8 @@ class _ImpotsScreenState extends State<ImpotsScreen> {
                           if (widget.isPro) {
                             _exporterAttestation(annee);
                           } else {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                                content: Text('Export attestation disponible dans la version Pro.')));
+                            Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => const PremiumScreen()));
                           }
                         },
                         style: ElevatedButton.styleFrom(

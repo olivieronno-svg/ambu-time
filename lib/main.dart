@@ -7,6 +7,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'utils/ad_service.dart';
+import 'utils/premium_service.dart';
 import 'utils/cloud_sync_service.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -133,10 +134,9 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   bool _tempsPartiel = false;
   bool _quatorzaineActivee = true;
   bool _chargement = true;
-  // App 100 % gratuite + pubs sur iOS ET Android (aucun abonnement Pro).
-  // Toutes les fonctionnalités (export PDF, Mes Droits, graphiques) sont
-  // accessibles gratuitement ; les pubs s'affichent pour tout le monde.
-  bool get _proFeaturesUnlocked => true;
+  // Statut Premium (abonnement Ambu Time Premium, 3,99 €/mois) : piloté par
+  // PremiumService. Déverrouille l'export PDF et masque les publicités.
+  bool _proFeaturesUnlocked = false;
   int? _compteurNavigation = 0;
   Garde? _gardeAModifier;
   final List<Garde> _gardes = [];
@@ -159,11 +159,24 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     });
     _dernierUid = FirebaseAuth.instance.currentUser?.uid;
     _authSub = FirebaseAuth.instance.authStateChanges().listen(_onAuthChange);
+    _initPremium();
+  }
+
+  Future<void> _initPremium() async {
+    await PremiumService.instance.init();
+    PremiumService.instance.isPro.addListener(_onProChange);
+    _onProChange();
+  }
+
+  void _onProChange() {
+    if (!mounted) return;
+    setState(() => _proFeaturesUnlocked = PremiumService.instance.isPro.value);
   }
 
   @override
   void dispose() {
     _authSub?.cancel();
+    PremiumService.instance.isPro.removeListener(_onProChange);
     super.dispose();
   }
 
@@ -636,7 +649,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
     // App gratuite : interstitielle toutes les 3 navigations pour tous.
     _compteurNavigation = (_compteurNavigation ?? 0) + 1;
     if (_compteurNavigation! >= 3) {
-      AdService.afficherInterstitielle(isPro: false);
+      AdService.afficherInterstitielle(isPro: _proFeaturesUnlocked);
       _compteurNavigation = 0;
     }
     setState(() => _currentIndex = index);

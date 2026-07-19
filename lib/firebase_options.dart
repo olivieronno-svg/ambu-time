@@ -59,12 +59,12 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyD1qt5W9lOq6BEE0Bpl4mvVEjD8dcLMyJo',
-    appId: '1:944165086970:ios:74a7e3cc5c17357085cb43',
+    appId: '1:944165086970:ios:935e97f0fbc9bb9985cb43',
     messagingSenderId: '944165086970',
     projectId: 'ambu-time',
     storageBucket: 'ambu-time.firebasestorage.app',
-    iosClientId: '944165086970-rdpc97eejfia2uide4t0p2n0he988uki.apps.googleusercontent.com',
-    iosBundleId: 'com.onnoff.ambutime',
+    iosClientId: '944165086970-10usqs194r41qdlp9pia5208qj27qe4c.apps.googleusercontent.com',
+    iosBundleId: 'fr.onnoff.ambutime',
   );
 
 }

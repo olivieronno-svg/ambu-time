@@ -6,8 +6,8 @@ workflows:
       app_store_connect: Codemagic
     environment:
       vars:
-        BUNDLE_ID: "com.onnoff.ambutime"
-        APP_STORE_APPLE_ID: 6763624759
+        BUNDLE_ID: "fr.onnoff.ambutime"
+        APP_STORE_APPLE_ID: 6792475823
       flutter: stable
       xcode: latest
       cocoapods: default

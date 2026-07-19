@@ -3,9 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>944165086970-rdpc97eejfia2uide4t0p2n0he988uki.apps.googleusercontent.com</string>
+	<string>944165086970-10usqs194r41qdlp9pia5208qj27qe4c.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.944165086970-rdpc97eejfia2uide4t0p2n0he988uki</string>
+	<string>com.googleusercontent.apps.944165086970-10usqs194r41qdlp9pia5208qj27qe4c</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>944165086970-gb8ussp6c3r013spnol68lv2st22s4hp.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
 	<string>AIzaSyD1qt5W9lOq6BEE0Bpl4mvVEjD8dcLMyJo</string>
 	<key>GCM_SENDER_ID</key>
@@ -13,7 +15,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.onnoff.ambutime</string>
+	<string>fr.onnoff.ambutime</string>
 	<key>PROJECT_ID</key>
 	<string>ambu-time</string>
 	<key>STORAGE_BUCKET</key>
@@ -29,6 +31,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:944165086970:ios:74a7e3cc5c17357085cb43</string>
+	<string>1:944165086970:ios:935e97f0fbc9bb9985cb43</string>
 </dict>
 </plist>

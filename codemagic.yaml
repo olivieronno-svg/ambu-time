@@ -3,7 +3,7 @@ workflows:
     name: iOS Workflow
     max_build_duration: 60
     integrations:
-      app_store_connect: Codemagic
+      app_store_connect: olivier-onno
     environment:
       vars:
         BUNDLE_ID: "fr.onnoff.ambutime"

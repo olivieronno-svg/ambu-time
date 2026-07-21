@@ -12,6 +12,7 @@ import '../models/garde.dart';
 import 'premium_screen.dart';
 import '../models/prime.dart';
 import '../utils/storage.dart';
+import '../utils/premium_service.dart';
 import '../main.dart';
 
 class ParametresScreen extends StatefulWidget {
@@ -114,6 +115,11 @@ class _ParametresScreenState extends State<ParametresScreen> {
   late bool _quatorzaineActivee;
   late TextEditingController _heuresHebdoCtrl;
 
+  // Saisie du code de gratuité (Premium à vie).
+  final TextEditingController _codeCtrl = TextEditingController();
+  String? _codeMessage;
+  bool _codeSuccess = false;
+
   @override
   void initState() {
     super.initState();
@@ -170,6 +176,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
     _idajPctCtrl.dispose(); _idajSeuilCtrl.dispose();
     _idajTier2PctCtrl.dispose(); _idajTier2SeuilCtrl.dispose();
     _heuresHebdoCtrl.dispose();
+    _codeCtrl.dispose();
     super.dispose();
   }
 
@@ -268,6 +275,20 @@ class _ParametresScreenState extends State<ParametresScreen> {
 
   double _parse(TextEditingController c, double fallback) =>
       double.tryParse(c.text.replaceAll(',', '.')) ?? fallback;
+
+  /// Valide le code de gratuité saisi. En cas de succès, l'app se déverrouille
+  /// via le listener sur PremiumService.isPro (main.dart) → la carte disparaît.
+  Future<void> _validerCode() async {
+    final ok = await PremiumService.instance.activerAvecCode(_codeCtrl.text);
+    if (!mounted) return;
+    setState(() {
+      _codeSuccess = ok;
+      _codeMessage = ok
+          ? '🎉 Premium débloqué ! Merci.'
+          : 'Code invalide. Vérifiez la saisie.';
+    });
+    if (ok) _codeCtrl.clear();
+  }
 
   void _sauvegarder() {
     final majNuitPct = _parse(_majNuitPctCtrl, widget.majorationNuitPourcentage)
@@ -606,6 +627,62 @@ class _ParametresScreenState extends State<ParametresScreen> {
                 ]),
               ),
             ),
+
+            // ── Code de gratuité ───────────────────────────────────
+            if (!widget.isPro)
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(14),
+                decoration: AppTheme.cardDecoration(),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Icon(Icons.card_giftcard, size: 18, color: AppTheme.blueAccent),
+                    const SizedBox(width: 8),
+                    Text('Code de gratuité', style: TextStyle(fontSize: 13,
+                        fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text('Un code d\'accès ? Saisissez-le pour débloquer le Premium à vie.',
+                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(child: TextField(
+                      controller: _codeCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      autocorrect: false,
+                      style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'AMBU-PRO-XXXXXX',
+                        hintStyle: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: AppTheme.bgCardBorder)),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: AppTheme.blueAccent)),
+                      ),
+                    )),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _validerCode,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.blueAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      child: const Text('Valider'),
+                    ),
+                  ]),
+                  if (_codeMessage != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_codeMessage!, style: TextStyle(fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: _codeSuccess ? AppTheme.colorGreen : AppTheme.colorRed)),
+                  ],
+                ]),
+              ),
 
             // ── Poste ──────────────────────────────────────────────
             _sectionTitle('Poste'),

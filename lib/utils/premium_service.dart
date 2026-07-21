@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'premium_codes.dart';
+import 'storage.dart';
+
 /// Gère l'abonnement « Ambu Time Premium » (3,99 €/mois) via Google Play /
 /// App Store, avec le package officiel `in_app_purchase`.
 ///
@@ -43,9 +46,10 @@ class PremiumService {
     if (_initFait) return;
     _initFait = true;
 
-    // 1) Statut connu hors-ligne (repli immédiat au lancement).
+    // 1) Statut connu hors-ligne (repli immédiat au lancement) :
+    //    abonnement persisté OU code de gratuité validé (déblocage à vie).
     final prefs = await SharedPreferences.getInstance();
-    isPro.value = prefs.getBool(_prefKey) ?? false;
+    isPro.value = (prefs.getBool(_prefKey) ?? false) || await Storage.isTesterPro();
 
     // 2) Store disponible ? (émulateur sans Play Store, etc.)
     _storeDisponible = await _iap.isAvailable();
@@ -94,6 +98,17 @@ class PremiumService {
     isPro.value = valeur;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefKey, valeur);
+  }
+
+  /// Valide un **code de gratuité** (Premium à vie). Renvoie true si le code
+  /// est reconnu. Insensible à la casse et aux espaces. Débloque le Premium
+  /// définitivement sur cet appareil (mêmes codes qu'Android — code partagé).
+  Future<bool> activerAvecCode(String code) async {
+    final normalise = code.trim().replaceAll(' ', '').toUpperCase();
+    if (!PremiumCodes.valides.contains(normalise)) return false;
+    await Storage.setTesterPro(true);
+    await _definirPro(true);
+    return true;
   }
 
   /// Lance le tunnel d'achat de l'abonnement mensuel.

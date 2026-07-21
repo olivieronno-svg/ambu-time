@@ -134,7 +134,7 @@ class _MainPageState extends State<MainPage> with SingleTickerProviderStateMixin
   bool _tempsPartiel = false;
   bool _quatorzaineActivee = true;
   bool _chargement = true;
-  // Statut Premium (abonnement Ambu Time Premium, 3,99 €/mois) : piloté par
+  // Statut Premium (abonnement Ambu Time Premium, 4,99 €/mois) : piloté par
   // PremiumService. Déverrouille l'export PDF et masque les publicités.
   bool _proFeaturesUnlocked = false;
   int? _compteurNavigation = 0;

@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'premium_codes.dart';
 import 'storage.dart';
 
-/// Gère l'abonnement « Ambu Time Premium » (3,99 €/mois) via Google Play /
+/// Gère l'abonnement « Ambu Time Premium » (4,99 €/mois) via Google Play /
 /// App Store, avec le package officiel `in_app_purchase`.
 ///
 /// Un seul point de vérité : [isPro]. Le reste de l'app l'écoute pour
@@ -39,8 +39,9 @@ class PremiumService {
 
   bool _initFait = false;
 
-  /// Prix formaté renvoyé par le store (ex. « 3,99 € »), ou une valeur de repli.
-  String get prixAffiche => _monthly?.price ?? '3,99 €';
+  /// Prix formaté renvoyé par le store (ex. « 4,99 € »), ou une valeur de repli
+  /// alignée sur le tarif réel configuré dans Play Console / App Store Connect.
+  String get prixAffiche => _monthly?.price ?? '4,99 €';
 
   Future<void> init() async {
     if (_initFait) return;

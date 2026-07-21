@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_theme.dart';
 import '../utils/premium_service.dart';
 
-/// Écran d'abonnement « Ambu Time Premium » (3,99 €/mois).
+/// Écran d'abonnement « Ambu Time Premium » (4,99 €/mois).
 class PremiumScreen extends StatefulWidget {
   const PremiumScreen({super.key});
 

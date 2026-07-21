@@ -618,7 +618,7 @@ class _ParametresScreenState extends State<ParametresScreen> {
                       Text(
                           widget.isPro
                               ? 'Merci ! Export PDF et zéro publicité activés.'
-                              : 'Export PDF, zéro publicité — 3,99 €/mois.',
+                              : 'Export PDF, zéro publicité — ${PremiumService.instance.prixAffiche}/mois.',
                           style: const TextStyle(color: Colors.white70, fontSize: 12.5)),
                     ]),
                   ),

@@ -629,7 +629,10 @@ class _ParametresScreenState extends State<ParametresScreen> {
             ),
 
             // ── Code de gratuité ───────────────────────────────────
-            if (!widget.isPro)
+            // Masqué sur iOS : Apple (Guideline 3.1.1) interdit de débloquer
+            // le premium hors In-App Purchase. Sur iOS on offre la gratuité
+            // via les « codes d'offre » d'App Store Connect. Android : conservé.
+            if (!widget.isPro && !Platform.isIOS)
               Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(14),

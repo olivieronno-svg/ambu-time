@@ -1,4 +1,7 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app_theme.dart';
 import '../utils/premium_service.dart';
@@ -63,6 +66,16 @@ class _PremiumScreenState extends State<PremiumScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Recherche de votre abonnement…'),
+      ));
+    }
+  }
+
+  Future<void> _ouvrirLien(String url) async {
+    final uri = Uri.parse(url);
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Impossible d\'ouvrir le lien.'),
       ));
     }
   }
@@ -161,11 +174,44 @@ class _PremiumScreenState extends State<PremiumScreen> {
 
               const SizedBox(height: 6),
               Text(
-                'L\'abonnement se renouvelle automatiquement chaque mois via votre '
-                'compte du store, sauf résiliation au moins 24 h avant l\'échéance. '
-                'Gérez ou résiliez à tout moment depuis votre abonnement Google Play / App Store.',
+                'Abonnement AmbuTime Premium : $prix par mois. Renouvellement '
+                'automatique chaque mois, sauf résiliation au moins 24 h avant '
+                'l\'échéance. Gérez ou résiliez à tout moment depuis '
+                '${Platform.isIOS ? 'votre compte App Store' : 'votre abonnement Google Play'}.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppTheme.textTertiary, fontSize: 11.5, height: 1.4),
+              ),
+              const SizedBox(height: 8),
+              // Liens obligatoires (Apple 3.1.2) : CGU (EULA) + confidentialité,
+              // affichés directement dans l'écran d'abonnement.
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () => _ouvrirLien(
+                        'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/'),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minimumSize: const Size(0, 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text('Conditions d\'utilisation (CGU)',
+                        style: TextStyle(color: AppTheme.blueAccent, fontSize: 11.5)),
+                  ),
+                  Text('·', style: TextStyle(color: AppTheme.textTertiary)),
+                  TextButton(
+                    onPressed: () => _ouvrirLien(
+                        'https://olivieronno-svg.github.io/ambu-time/privacy.html'),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      minimumSize: const Size(0, 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text('Confidentialité',
+                        style: TextStyle(color: AppTheme.blueAccent, fontSize: 11.5)),
+                  ),
+                ],
               ),
             ],
           ),

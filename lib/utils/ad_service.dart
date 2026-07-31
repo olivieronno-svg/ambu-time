@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 class AdService {
@@ -28,11 +29,16 @@ class AdService {
     ConsentInformation.instance.requestConsentInfoUpdate(
       ConsentRequestParameters(),
       () {
-        ConsentForm.loadAndShowConsentFormIfRequired((_) {
+        ConsentForm.loadAndShowConsentFormIfRequired((_) async {
+          // ATT APRES le formulaire RGPD (UMP) : l'ATT est ainsi le DERNIER
+          // consentement demande. On ne redemande jamais l'autorisation de
+          // "suivre" apres un refus ATT (exigence Apple 5.1.1(iv)).
+          await _demanderAtt();
           if (!completer.isCompleted) completer.complete();
         });
       },
-      (error) {
+      (error) async {
+        await _demanderAtt();
         if (!completer.isCompleted) completer.complete();
       },
     );
@@ -40,6 +46,15 @@ class AdService {
     if (await ConsentInformation.instance.canRequestAds()) {
       await MobileAds.instance.initialize();
       _mobileAdsInitialise = true;
+    }
+  }
+
+  /// Demande l'autorisation de suivi (ATT) sur iOS, une seule fois.
+  static Future<void> _demanderAtt() async {
+    if (!Platform.isIOS) return;
+    final status = await AppTrackingTransparency.trackingAuthorizationStatus;
+    if (status == TrackingStatus.notDetermined) {
+      await AppTrackingTransparency.requestTrackingAuthorization();
     }
   }
 

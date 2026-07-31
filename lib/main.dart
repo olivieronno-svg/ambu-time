@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
-import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -28,13 +26,9 @@ import 'app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  if (Platform.isIOS) {
-    final status = await AppTrackingTransparency.trackingAuthorizationStatus;
-    if (status == TrackingStatus.notDetermined) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      await AppTrackingTransparency.requestTrackingAuthorization();
-    }
-  }
+  // NB : l'autorisation de suivi (ATT) est demandee dans AdService.initialiser(),
+  // APRES le formulaire de consentement RGPD, pour respecter l'ordre exige par
+  // Apple (5.1.1) — ne jamais redemander a "suivre" apres un refus ATT.
   runApp(const AmbulancierApp());
 }
 
